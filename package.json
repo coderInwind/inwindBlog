@@ -8,10 +8,12 @@
     "build": "cross-env INIT_CWD=$PWD next build && cross-env NODE_OPTIONS='--experimental-json-modules' node ./scripts/postbuild.mjs",
     "serve": "next start",
     "analyze": "cross-env ANALYZE=true next build",
-    "lint": "next lint --fix --dir pages --dir app --dir components --dir lib --dir layouts --dir scripts"
+    "lint": "next lint --fix --dir pages --dir app --dir components --dir lib --dir layouts --dir scripts",
+    "sync-post": "node ./scripts/syncPost.js"
   },
   "dependencies": {
     "@next/bundle-analyzer": "13.5.3",
+    "@octokit/core": "^5.0.1",
     "@tailwindcss/forms": "^0.5.4",
     "@tailwindcss/typography": "^0.5.9",
     "autoprefixer": "^10.4.13",
@@ -23,6 +25,8 @@
     "next": "13.5.3",
     "next-contentlayer": "0.3.4",
     "next-themes": "^0.2.1",
+    "octokit": "^3.1.1",
+    "pinyin": "2.0",
     "pliny": "0.1.4",
     "postcss": "^8.4.24",
     "react": "18.2.0",

@@ -1,0 +1,40 @@
+name: Sync Post
+
+on:
+  issuse
+    types:
+      - opened
+      - closed
+      - labeled
+
+    workflow_dispatch:
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  Publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout  ️
+        uses: actions/checkout@v2
+
+      - name: Git config  
+        run: |
+          git config --global user.name "Lgee"
+          git config --global user.email "1565692947@qq.com"
+
+      - name: Display runtime info ✨
+        run: |
+          echo '当前目录：'
+          pwd
+
+      - name: Install  
+        run: yarn install
+
+      - name: Update blog files ⛏️
+        run: |
+          yarn sync-post  # 主要脚本
+          git add .
+          git commit -m 'chore(ci): blog sync'
+          git push
