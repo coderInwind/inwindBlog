@@ -7,7 +7,7 @@ on:
     workflow_dispatch:
 
 env:
-  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.PRESS_TOKEN }}
 
 jobs:
   Publish:
