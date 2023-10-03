@@ -1,15 +1,8 @@
 name: Sync Post
 
 on:
-  issues
-    types:
-      - opened
-      - closed
-      - renamed
-      - labeled
-      - unlabeled
-      - reopened
-      - committed # 修改？
+  issue_comment
+    types: [created, deleted]
 
     workflow_dispatch:
 
