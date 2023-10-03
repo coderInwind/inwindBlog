@@ -1,4 +1,6 @@
 name: Sync Post
+with:
+  repo: coderLgee/inwindBlog
 
 on:
   issues:
