@@ -1,10 +1,8 @@
 name: Sync Post
-with:
-  repo: coderLgee/inwindBlog
 
 on:
   issues:
-    types: [opened, edited,unpinned]
+    types: [opened, edited, unpinned]
 
     workflow_dispatch:
 
