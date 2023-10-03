@@ -2,7 +2,7 @@ name: Sync Post
 
 on:
   issue_comment:
-    types: [created, deleted]
+    types: [created]
 
     workflow_dispatch:
 
