@@ -6,8 +6,8 @@ const path = require('path')
 const { TOKEN } = process.env
 
 const octokit = new Octokit({
-  // auth: TOKEN,
-  auth: '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',
+  auth: TOKEN,
+  // auth: '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',
 })
 
 const generateMdx = (issue) => {
