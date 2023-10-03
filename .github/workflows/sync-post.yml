@@ -1,7 +1,7 @@
 name: Sync Post
 
 on:
-  issuse
+  issues
     types:
       - opened
       - closed
