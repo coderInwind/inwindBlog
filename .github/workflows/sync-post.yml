@@ -5,7 +5,11 @@ on:
     types:
       - opened
       - closed
+      - renamed
       - labeled
+      - unlabeled
+      - reopened
+      - committed # 修改？
 
     workflow_dispatch:
 

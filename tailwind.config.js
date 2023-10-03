@@ -65,6 +65,16 @@ module.exports = {
           },
         },
       }),
+      animation: {
+        heartbeat: 'heartbeat 1s ease-in-out infinite',
+      },
+      keyframes:{
+        heartbeat:{
+          "0%":{transform:"scale(1)"},
+          "50%":{transform:"scale(.8)"},
+          "100%":{transform:"scale(1)"}
+        }
+      }
     },
   },
   plugins: [require('@tailwindcss/forms'), require('@tailwindcss/typography')],
