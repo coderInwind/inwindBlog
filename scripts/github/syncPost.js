@@ -17,13 +17,31 @@ const generateMdx = (issue) => {
   date: ${created_at}
   summary:
   tags: ${JSON.stringify(labels.map((item) => item.name))}
----
-
-${body.replace(/<br \/>/g, '\n')}
-`
+  ---
+  
+  ${body.replace(/<br \/>/g, '\n')}
+  `
 }
 
+// 分组写入
+
 const blogOutPutPath = '../../data/blog'
+const blockWrite = (item, path) => {
+  // 生成博文
+  const content = generateMdx(item)
+  const tempFileName = item.title
+  const date = new Date()
+  const blocksName = date.getFullYear() + "-" + date.getMonth()
+
+  const fileName = pinyin(tempFileName, {
+    style: 0,
+  }).join('')
+
+
+  fs.writeFileSync(`${path}/${blocksName}/${fileName}.mdx`, content)
+
+}
+
 
 function main() {
   octokit
@@ -34,17 +52,14 @@ function main() {
     .then((res) => {
       const libPath = path.resolve(__dirname, blogOutPutPath)
 
-      console.log(res.data);
+
 
       for (item of res.data) {
-        const content = generateMdx(item)
-        const tempFileName = item.title
 
-        const fileName = pinyin(tempFileName, {
-          style: 0,
-        }).join('')
+        // 按月份进行分组写入
 
-        fs.writeFileSync(`${libPath}/${fileName}.mdx`, content)
+        blockWrite(item, libPath)
+
       }
     })
 }

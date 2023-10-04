@@ -34,8 +34,6 @@ export default function PostLayout({ content, authorDetails, next, prev, childre
   const basePath = path.split('/')[0]
 
 
-  console.log(123123123,authorDetails);
-  
 
   return (
     <SectionContainer>
