@@ -25,8 +25,9 @@ const generateMdx = (issue) => {
 
 // 分组写入
 
-const blogOutPutPath = '../../data/blog'
-const blockWrite = (item, path) => {
+const outPutPath = path.resolve(__dirname, '../../data/blog')
+
+const blockWrite = (item) => {
   // 生成博文
   const content = generateMdx(item)
   const tempFileName = item.title
@@ -38,7 +39,17 @@ const blockWrite = (item, path) => {
   }).join('')
 
 
-  fs.writeFileSync(`${path}/${blocksName}/${fileName}.mdx`, content)
+  // 访问性测试
+  const blocksPath = outPutPath + "/" + blocksName
+  try {
+    fs.accessSync(blocksPath, fs.constants.R_OK && fs.constants.W_OK)
+  } catch (e) {
+    // 创建目录
+    fs.mkdirSync(blocksPath)
+  }
+
+
+  fs.writeFileSync(`${outPutPath}/${blocksName}/${fileName}.mdx`, content)
 
 }
 
@@ -50,15 +61,11 @@ function main() {
       repo: 'inwindBlog',
     })
     .then((res) => {
-      const libPath = path.resolve(__dirname, blogOutPutPath)
-
-
-
       for (item of res.data) {
 
         // 按月份进行分组写入
 
-        blockWrite(item, libPath)
+        blockWrite(item)
 
       }
     })
