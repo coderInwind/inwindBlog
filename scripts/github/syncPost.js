@@ -17,7 +17,7 @@ const generateMdx = (issue) => {
   date: ${created_at}
   summary:
   tags: ${JSON.stringify(labels.map((item) => item.name))}
-  ---
+---
   
   ${body.replace(/<br \/>/g, '\n')}
   `

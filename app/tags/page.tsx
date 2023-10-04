@@ -3,13 +3,39 @@ import Tag from '@/components/Tag'
 import { slug } from 'github-slugger'
 import tagData from 'app/tag-data.json'
 import { genPageMetadata } from 'app/seo'
+import { allBlogs } from 'contentlayer/generated'
+import { useState } from 'react'
+
+interface Tags {
+  count: number
+  title: string
+}
+
 
 export const metadata = genPageMetadata({ title: 'Tags', description: 'Things I blog about' })
 
 export default async function Page() {
-  const tagCounts = tagData as Record<string, number>
-  const tagKeys = Object.keys(tagCounts)
-  const sortedTags = tagKeys.sort((a, b) => tagCounts[b] - tagCounts[a])
+  // const tagCounts = tagData as Record<string, number>
+  // const tagKeys = Object.keys(tagCounts)
+  // const sortedTags = tagKeys.sort((a, b) => tagCounts[b] - tagCounts[a])
+  // const [tags, setTags] = useState<string[]>([])
+  const tags: Tags[] = []
+  // 计算所有的标签
+  allBlogs.forEach(item => {
+    if (!item.tags.length) return
+    item.tags.forEach(iten => {
+      const tagIndex = tags.findIndex(iteo => iteo.title === iten)
+      if (tagIndex !== -1) {
+        tags[tagIndex].count += 1
+      } else {
+        tags.push({ title: iten, count: 1 })
+      }
+    })
+  })
+
+  console.log(12312321, tags);
+
+
   return (
     <>
       <div className="flex flex-col items-start justify-start divide-y divide-gray-200 dark:divide-gray-700 md:mt-24 md:flex-row md:items-center md:justify-center md:space-x-6 md:divide-y-0">
@@ -19,17 +45,17 @@ export default async function Page() {
           </h1>
         </div>
         <div className="flex max-w-lg flex-wrap">
-          {tagKeys.length === 0 && 'No tags found.'}
-          {sortedTags.map((t) => {
+          {tags.length === 0 && 'No tags found.'}
+          {tags.map((t) => {
             return (
-              <div key={t} className="mb-2 mr-5 mt-2">
-                <Tag text={t} />
+              <div key={t.title} className="mb-2 mr-5 mt-2">
+                <Tag text={t.title} />
                 <Link
-                  href={`/tags/${slug(t)}`}
+                  href={`/tags/${slug(t.title)}`}
                   className="-ml-2 text-sm font-semibold uppercase text-gray-600 dark:text-gray-300"
-                  aria-label={`View posts tagged ${t}`}
+                  aria-label={`View posts tagged ${t.title}`}
                 >
-                  {` (${tagCounts[t]})`}
+                  {` (${t.count})`}
                 </Link>
               </div>
             )
