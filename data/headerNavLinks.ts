@@ -1,5 +1,5 @@
 const headerNavLinks = [
-  { href: '/', title: 'Home' },
+  { href: '/', title: '主页' },
   { href: '/blog', title: '博客' },
   { href: '/tags', title: '归档' },
   { href: '/projects', title: '项目' },
