@@ -105,7 +105,14 @@ export default async function Page({ params }: { params: { slug: string[] } }) {
     const authorResults = allAuthors.find((p) => p.slug === author)
     return coreContent(authorResults as Authors)
   })
+
+
+
   const mainContent = coreContent(post)
+
+  console.log(123, mainContent);
+
+
   const jsonLd = post.structuredData
   jsonLd['author'] = authorDetails.map((author) => {
     return {

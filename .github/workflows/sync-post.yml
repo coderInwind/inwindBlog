@@ -34,4 +34,5 @@ jobs:
           yarn sync-post  # 主要脚本
           git add .
           git commit -m 'chore(ci): blog sync'
+          git pull
           git push
