@@ -56,12 +56,12 @@ const siteMetadata = {
       // repo: process.env.NEXT_PUBLIC_GISCUS_REPO,
       repo:"coderInwind/inwindBlog",
       // repositoryId: process.env.NEXT_PUBLIC_GISCUS_REPOSITORY_ID,
-      repositoryId:"699200074",
+      repositoryId:"R_kgDOKazySg",
       // category: process.env.NEXT_PUBLIC_GISCUS_CATEGORY,
       category:"Comments",
       // categoryId: process.env.NEXT_PUBLIC_GISCUS_CATEGORY_ID,
-      categoryId:"17",
-      mapping: 'pathname', // supported options: pathname, url, title
+      categoryId:"DIC_kwDOKazySs4CZ6KF",
+      mapping: 'title', // supported options: pathname, url, title
       reactions: '1', // Emoji reactions: 1 = enable / 0 = disable
       // Send discussion metadata periodically to the parent window: 1 = enable / 0 = disable
       metadata: '0',
@@ -75,7 +75,7 @@ const siteMetadata = {
       // example: https://giscus.app/themes/custom_example.css
       themeURL: '',
       // This corresponds to the `data-lang="en"` in giscus's configurations
-      lang: 'en',
+      lang: 'zh-CN',
     },
   },
   search: {
