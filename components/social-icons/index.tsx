@@ -1,14 +1,9 @@
-import { Mail, Github, Facebook, Youtube, Linkedin, Twitter, Mastodon, Wechat } from './icons'
+import { Mail, Github, Facebook, Youtube, Linkedin, Mastodon, Wechat } from './icons'
 
 const components = {
   mail: Mail,
   github: Github,
   wechat: Wechat,
-  // facebook: Facebook,
-  // youtube: Youtube,
-  // linkedin: Linkedin,
-  // twitter: Twitter,
-  // mastodon: Mastodon,
 }
 
 type SocialIconProps = {
