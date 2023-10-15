@@ -11,7 +11,6 @@ const octokit = new Octokit({
   // auth: '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',
 })
 
-
 let currentTags
 const generateMdx = (issue) => {
   const { title, labels, created_at, body } = issue
@@ -27,14 +26,12 @@ const generateMdx = (issue) => {
   
   ${body.replace(/<br \/>/g, '\n')}
   `
-
 }
 
 // // 处理/新增标签
 // const  generateTags = (thisTags)=>{
-  
-// }
 
+// }
 
 // 分组写入
 const outPutPath = path.resolve(__dirname, '../../data/blog')
