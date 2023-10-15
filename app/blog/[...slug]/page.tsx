@@ -110,7 +110,6 @@ export default async function Page({ params }: { params: { slug: string[] } }) {
 
   const mainContent = coreContent(post)
 
-  console.log(123, mainContent);
 
 
   const jsonLd = post.structuredData

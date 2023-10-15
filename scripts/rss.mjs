@@ -57,6 +57,5 @@ async function generateRSS(config, allBlogs, page = 'feed.xml') {
 
 const rss = () => {
   generateRSS(siteMetadata, allBlogs)
-  console.log('RSS feed generated...')
 }
 export default rss

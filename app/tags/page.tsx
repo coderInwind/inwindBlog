@@ -33,7 +33,7 @@ export default async function Page() {
     })
   })
 
-  console.log(12312321, tags);
+
 
 
   return (

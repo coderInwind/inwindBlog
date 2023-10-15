@@ -46,6 +46,7 @@ const computedFields: ComputedFields = {
  * Count the occurrences of all tags across blog posts and write to json file
  */
 function createTagCount(allBlogs) {
+
   const tagCount: Record<string, number> = {}
   allBlogs.forEach((file) => {
     if (file.tags && (!isProduction || file.draft !== true)) {
@@ -150,6 +151,7 @@ export default makeSource({
   },
   onSuccess: async (importData) => {
     const { allBlogs } = await importData()
+    
     createTagCount(allBlogs)
     createSearchIndex(allBlogs)
   },
