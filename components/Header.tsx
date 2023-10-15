@@ -25,14 +25,15 @@ const Header = () => {
           </div>
         </Link>
       </div>
-      <div className="flex items-center leading-5 space-x-4 sm:space-x-6">
+      <div className="flex items-center tracking-widest leading-5 space-x-4 sm:space-x-6">
         {headerNavLinks
           .filter((link) => link.href !== '/')
           .map((link) => (
             <Link
               key={link.title}
               href={link.href}
-              className="hidden sm:block font-medium text-gray-900 dark:text-gray-100"
+              className="hidden sm:block font-medium text-gray-900 dark:text-gray-100 hover:text-primary-400 dark:hover:text-primary-400
+              transition-all relative hover:after:w-full after:content-[''] after:absolute after:-bottom-1 after:left-0 after:w-0 after:h-1 after:bg-primary-400 after:transition-all"
             >
               {link.title}
             </Link>
