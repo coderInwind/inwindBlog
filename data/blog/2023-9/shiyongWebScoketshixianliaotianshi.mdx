@@ -5,5 +5,44 @@
   tags: []
 ---
   
-  **一份耕耘，一份收获**
+  ### 前言
+下来一个需求，要求实现类型一个聊天室的功能，我们使用到了`websocket`进行双向通讯实现。
+* 什么是websocket
+mdn做出如下解释：[WebSockets](https://developer.mozilla.org/zh-CN/docs/Web/API/WebSocket) 是一种先进的技术。它可以在用户的浏览器和服务器之间打开交互式通信会话。使用此 API，你可以向服务器发送消息并接收事件驱动的响应，而无需通过轮询服务器的方式以获得响应。
+websocket与http协议相同点是他们都是基于TCP的协议，不同的是有以下几点：
+* websocket和http的区别
+1. websocket是双向通信协议，而http是单向的
+2. 在建立连接的过程中，websocket会利用http请求进行握手，会经历四步: 客户端发送握手请 --> 服务端响应握手请求--> 客户端验证请求 --> 建立连接。而http需要经历三握四挥。
+
+### websocket 实现聊天室
+
+首先我们需要建立websocket连接，值得注意的是如果你想在请求头上携带token，websocket是不支持自定义请求头名的，你可以放到第二个参数里，后端通过请求头`sec-websocket-protocol`获取，或者你可以直接凭借到请求的url上：
+```
+ chatState.chatInstance = new WebSocket(
+    import.meta.env.VITE_WS_CHAT_URL + token
+  );
+ chatState.chatInstance.onopen = (res) => {
+    console.log("实例化成功", res);
+    // 开启心跳
+    chatState.chatInstance.send(JSON.stringify({ msg: "[PING]" }));
+ };
+// 监听接收的信息
+chatState.chatInstance.onmessage = (res) => {
+ ...
+})
+```
+这样就完成了一个简单的websocket连接。
+
+### 心跳
+websocket并在不收发信息的情况下并不能一直维持连接，所以我们需要做心跳来维持websocket的连接，心跳这个名字我觉得形容的很恰当，心不跳自然就断开了，做心跳要和服务端约定好，我这里传一个`[PING]`，服务端就会返回一个`[PONG]`，我们在收到服务器消息的时候写一个定时器，过30s后我们再次发送，这样就能通过心跳维持WS的连接了。
+
+### 聊天信息的流式输出
+因为在聊天的时候可能出现一些长文本，为了优化用户体验，我们需要实现一个流式输出的功能，我跟后端约定聊天的回复会一个字或几个字的传回来，但他们前后必须是有`[BEGIN]`和`[DONE]`消息的，所以在接收到相关的消息是我们将字符一个个拼接起来就能实现流式效果了。
+
+### 语音的流式播放
+同样的，长文本的语音播放太慢了，所以实现了一个语音的流式播放（真折磨）,这里我同样使用到了websocket,
+
+
+
+
   
