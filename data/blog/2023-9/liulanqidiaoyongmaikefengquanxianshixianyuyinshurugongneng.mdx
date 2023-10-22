@@ -13,6 +13,46 @@
 首先我们得采集到用户说的话，实现这个得使用到两个浏览器的API，第一个是<a href="https://developer.mozilla.org/zh-CN/docs/Web/API/MediaDevices/getUserMedia" target="_blank">MediaDevices.getUserMedia()</a> `MediaDevices.getUserMedia()`会提示用户给予使用媒体输入的许可，媒体输入会产生一个[MediaStream](https://developer.mozilla.org/zh-CN/docs/Web/API/MediaStream)，里面包含了请求的媒体类型的轨道。此流可以包含一个视频轨道（来自硬件或者虚拟视频源，比如相机、视频采集设备和屏幕共享服务等等）、一个音频轨道（同样来自硬件或虚拟音频源，比如麦克风、A/D 转换器等等），也可能是其他轨道类型。
 
 通俗的来讲，就是可以拉取获取用户媒体权限的弹框，在用户通用后获取一个流。值得注意的是：在实现的过程中这个弹框的触发在各个浏览器中是不同的，在苹果的safari浏览器中获取权限框被用户拒绝后依旧能再次触发，但在某些安卓浏览器中权限框被拒绝后就会维持拒绝状态不会被触发；第二，获取权限和用户语音输入的时机最好错开，作者要实现的交互是按住进行语音输入，松开发送，但某些安卓浏览器在触发获取权限弹窗时会将`touchend`事件的图层覆盖掉，使之不能触发。
+```
+ navigator.mediaDevices
+      .getUserMedia({
+        audio: true,
+      })
+      .then((res) => {
+        speechState.stream = res;
+      })
+      .catch(() => {
+        Toast("抱歉，我们无法获取您的语音权限，无法使用语音输入功能");
+     })
+```
+
+第二步，我们可以通过[MediaRecorder](https://developer.mozilla.org/zh-CN/docs/Web/API/MediaRecorder)进行录制：
+```
+//创建实例
+speechState.recordInstance = new MediaRecorder(speechState.stream);
+// 录制事件
+  speechState.recordInstance.ondataavailable = (event) => {
+    if (event.data.size > 0) {
+      // 将每次返回的二进制数据存入数组
+      chunks.push(event.data);
+    }
+  };
+// 开始事件
+speechState.recordInstance.start();
+
+// 停止事件
+// 将获取到的二进制数据进行合并，然后转换为文字
+speechState.recordInstance.onstop = () => {
+     const audioBlob = new Blob(chunks, { type: "audio/wav" });
+     const formData = new FormData();
+     formData.append("file", audioBlob);
+     voice2Text(formData);
+};
+```
+
+
+### 转化音频
+
 
 
   
