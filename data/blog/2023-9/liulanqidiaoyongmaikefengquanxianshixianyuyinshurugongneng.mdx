@@ -52,6 +52,49 @@ speechState.recordInstance.onstop = () => {
 
 
 ### 转化音频
+这一步我们选用了阿里云的语音转化接口，但作者在写的时候没有弄清楚阿里云接口所接收的格式，所以卡了很久：
+```
+// 上传语音
+const voice2Text = (payload) => {
+  Toast.loading({
+    message: "加载中...",
+    forbidClick: true,
+  });
+
+  arsVoiceSynthesis(payload).then((res) => {
+    if (res.data.code == 500) {
+      Toast.fail("语音处理失败，请重试");
+    } else {
+      speechState.result = res.result;
+      chatState.messageList.push({
+        message: res.data.message,
+        isSelf: true,
+      });
+      scrollToBottom();
+      sendMessage(res.data.message);
+    }
+
+    Toast.clear();
+  });
+};
+```
+值得注意的是，阿里云的接口接收的数据类型有不同的要求，分别是`pcm`和`wav`格式，如何不注意类型可能会解析不出来，他们的区别我整理如下：
+
+* PCM
+PCM（Pulse Code Modulation----脉码调制录音)。所谓PCM录音就是将声音等模拟信号变成符号化的脉冲列，再予以记录。PCM信号是由[1]、[0]等符号构成的数字信号，而未经过任何编码和压缩处理。与模拟信号比，它不易受传送系统的杂波及失真的影响。动态范围宽，可得到音质相当好的影响效果。
+
+* WAV 
+wav是一种无损的音频文件格式，WAV符合 PIFF(Resource Interchange File Format)规范。所有的WAV都有一个文件头，这个文件头音频流的编码参数。WAV对音频流的编码没有硬性规定，除了PCM之外，还有几乎所有支持ACM规范的编码都可以为WAV的音频流进行编码。
+
+简单的来说，PCM 就是比 WAV 少一个文件头，因此你可以将他们互相转化。
+
+### 发送音频
+其实到这里我们的功能差不多已经实现，接下来就是通过`WebSocket`发送，我就不多赘述了。
+
+
+### 总结
+这个需求完成的过程中的三个重点分别是：不同浏览器获取权限的适配、语音流的获取处理、不同语音格式的区分和转化。
+
 
 
 
