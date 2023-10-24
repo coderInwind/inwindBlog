@@ -8,5 +8,25 @@
   ### 前言
 最近一直在对接媒体相关的需求，流媒体播放、语音输入之类的，踩了很多坑，总结下来是自己对于二进制数据的处理并不是很熟悉，今天抽空整理了一下相关二进制处理对象的使用和他们互相之间的转化。
 
-### 
+### Blob
+[blob](https://developer.mozilla.org/zh-CN/docs/Web/API/Blob/Blob)全称是 _Binary Large Object_ 表示一个不可变，原始类型的类文件对象，它可以是图片、音频、视频等，它的数据可以按照文本或二进制的格式进行读取。
+
+blob()包含两个参数
++ array 是一个由[ArrayBuffer](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer), [ArrayBufferView](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/TypedArray), [Blob](https://developer.mozilla.org/zh-CN/docs/Web/API/Blob), [DOMString](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/String) 等对象构成的 [Array](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Array) ，或者其他类似对象的混合体，它将会被放进 [Blob](https://developer.mozilla.org/zh-CN/docs/Web/API/Blob)。DOMStrings 会被编码为 UTF-8。
++ options 是一个可选的BlobPropertyBag字典，它可能会指定如下两个属性：
+
+   - type，默认值为 ""，它代表了将会被放入到 blob 中的数组内容的 MIME 类型。
+   - endings，默认值为"transparent"，用于指定包含行结束符\n的字符串如何被写入。它是以下两个值中的一个："native"，代表行结束符会被更改为适合宿主操作系统文件系统的换行符，或者 "transparent"，代表会保持 blob 中保存的结束符不变 非标准
+
+我们可以尝试构造一个`domString`的`Blob`：
+```
+let array = ['<a id="a"><b id="b">hey!</b></a>']
+const blob = new Blob([array],"text/html")
+```
+当然也可以是其他的[MIME类型](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types)：
+
+
+### Flie
+`File`继承了`Blob`的所有属性，可以看成一个特殊的`Blob`
+
   
