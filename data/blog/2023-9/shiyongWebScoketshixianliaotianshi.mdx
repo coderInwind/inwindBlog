@@ -62,7 +62,8 @@ chatState.ttsInstance.onmessage = async (res) => {
     
 };
 ```
-你可以直接把请求的数据传给player，然后他会自动播放，但需要注意的是该包只接收`TypedArray`类型或`ArrayBuffer`
+我们把接收到的一段段`Blob`数据传给player实例的feed方法，但需要注意的是只接收`TypedArray`类型或`ArrayBuffer`类型，等待缓冲完毕之后音频就会播放出来了，这些属性类型有些同学可能会觉得陌生，他们都是是处理二进制数据必不可少了，
+
 
 
 
