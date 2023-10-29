@@ -14,7 +14,7 @@ websocket与http协议相同点是他们都是基于TCP的协议，不同的是�
 1. websocket是双向通信协议，而http是单向的
 2. 在建立连接的过程中，websocket会利用http请求进行握手，会经历四步: 客户端发送握手请 --> 服务端响应握手请求--> 客户端验证请求 --> 建立连接。而http需要经历三握四挥。
 
-### websocket 实现聊天室
+### websocket实现聊天室
 
 首先我们需要建立websocket连接，值得注意的是如果你想在请求头上携带token，websocket是不支持自定义请求头名的，你可以放到第二个参数里，后端通过请求头`sec-websocket-protocol`获取，或者你可以直接凭借到请求的url上：
 ```
