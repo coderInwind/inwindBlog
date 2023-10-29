@@ -1,3 +1,5 @@
+'use client'
+
 import { ReactNode } from 'react'
 import { CoreContent } from 'pliny/utils/contentlayer'
 import type { Blog, Authors } from 'contentlayer/generated'
@@ -27,13 +29,29 @@ interface LayoutProps {
   next?: { path: string; title: string }
   prev?: { path: string; title: string }
   children: ReactNode
+  titles: [string]
 }
 
-export default function PostLayout({ content, authorDetails, next, prev, children }: LayoutProps) {
+export default function PostLayout({
+  content,
+  authorDetails,
+  next,
+  prev,
+  children,
+  titles,
+}: LayoutProps) {
   const { filePath, path, slug, date, title, tags } = content
   const basePath = path.split('/')[0]
 
-
+  const scrollToTitle = (title: string) => {
+    const el = document.getElementById(title)
+    if (el) {
+      el.scrollIntoView({
+        block: 'start',
+        behavior: 'smooth',
+      })
+    }
+  }
 
   return (
     <SectionContainer>
@@ -74,7 +92,7 @@ export default function PostLayout({ content, authorDetails, next, prev, childre
                         />
                       )}
                       <dl className="whitespace-nowrap text-sm font-medium leading-5">
-                        <dt className="sr-only">Name</dt>
+                        <dt className="sr-only">昵称</dt>
                         <dd className="text-gray-900 dark:text-gray-100">{author.name}</dd>
                         {/* <dt className="sr-only">Twitter</dt>
                         <dd>
@@ -112,7 +130,7 @@ export default function PostLayout({ content, authorDetails, next, prev, childre
                 {tags && (
                   <div className="py-4 xl:py-8">
                     <h2 className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                      Tags
+                      标签
                     </h2>
                     <div className="flex flex-wrap">
                       {tags.map((tag) => (
@@ -136,7 +154,7 @@ export default function PostLayout({ content, authorDetails, next, prev, childre
                     {next && next.path && (
                       <div>
                         <h2 className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                          Next Article
+                          下一篇
                         </h2>
                         <div className="text-primary-500 hover:text-primary-600 dark:hover:text-primary-400">
                           <Link href={`/${next.path}`}>{next.title}</Link>
@@ -146,13 +164,32 @@ export default function PostLayout({ content, authorDetails, next, prev, childre
                   </div>
                 )}
               </div>
+
+              <div className="sticky top-10">
+                <h2 className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  本页目录
+                </h2>
+                <div>
+                  {titles.map((item) => {
+                    return (
+                      <div
+                        onClick={() => scrollToTitle(item)}
+                        className="text-gray-400 text-xs mt-1 dark:text-gray-300 cursor-pointer"
+                      >
+                        {item}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
               <div className="pt-4 xl:pt-8">
                 <Link
                   href={`/${basePath}`}
                   className="text-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
                   aria-label="Back to the blog"
                 >
-                  &larr; Back to the blog
+                  &larr; 回到首页
                 </Link>
               </div>
             </footer>

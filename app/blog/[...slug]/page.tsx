@@ -106,11 +106,15 @@ export default async function Page({ params }: { params: { slug: string[] } }) {
     return coreContent(authorResults as Authors)
   })
 
+  // 查找标题
 
+  const titles = Array.from(JSON.stringify(post.body.raw).matchAll(/###.+?\\n/g)).map(item=>{
+    let temp = item[0].replace("### ","").replace("\\n","")
+    return temp
+  })
+  
 
   const mainContent = coreContent(post)
-
-
 
   const jsonLd = post.structuredData
   jsonLd['author'] = authorDetails.map((author) => {
@@ -128,7 +132,7 @@ export default async function Page({ params }: { params: { slug: string[] } }) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <Layout content={mainContent} authorDetails={authorDetails} next={next} prev={prev}>
+      <Layout content={mainContent} authorDetails={authorDetails} next={next} prev={prev} titles={titles}>
         <MDXLayoutRenderer code={post.body.code} components={components} toc={post.toc} />
       </Layout>
     </>
