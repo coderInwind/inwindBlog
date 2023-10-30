@@ -287,6 +287,8 @@ const onPlayerEnd = (e) => {
 ```
 我在接收数据时统计了整个的字节大小，然后在`onended`的回调中与`target`做对比，就可以得出是不是全部播放完毕了。
 
+其次是`onstarted`，经过我的测试，无论是在弱网环境还是长语言的情况下，播放语言加载的时间差不多在1s左右：
+![image](https://github.com/coderInwind/inwindBlog/assets/91716457/799e063a-8a19-4152-bc1c-94fd96e629f7)
 
 
   
