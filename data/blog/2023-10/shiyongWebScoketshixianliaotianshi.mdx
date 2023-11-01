@@ -1,0 +1,295 @@
+---
+  title: 使用WebScoket实现聊天室
+  date: 2023-10-22T11:43:04Z
+  summary:
+  tags: ["WebAPI","JavaScript"]
+---
+  
+  ### 前言
+下来一个需求，要求实现类型一个聊天室的功能，我们使用到了`websocket`进行双向通讯实现。
+* 什么是websocket
+mdn做出如下解释：[WebSockets](https://developer.mozilla.org/zh-CN/docs/Web/API/WebSocket) 是一种先进的技术。它可以在用户的浏览器和服务器之间打开交互式通信会话。使用此 API，你可以向服务器发送消息并接收事件驱动的响应，而无需通过轮询服务器的方式以获得响应。
+websocket与http协议相同点是他们都是基于TCP的协议，不同的是有以下几点：
+* websocket和http的区别
+1. websocket是双向通信协议，而http是单向的
+2. 在建立连接的过程中，websocket会利用http请求进行握手，会经历四步: 客户端发送握手请 --> 服务端响应握手请求--> 客户端验证请求 --> 建立连接。而http需要经历三握四挥。
+
+### websocket 实现聊天室
+
+首先我们需要建立websocket连接，值得注意的是如果你想在请求头上携带token，websocket是不支持自定义请求头名的，你可以放到第二个参数里，后端通过请求头`sec-websocket-protocol`获取，或者你可以直接凭借到请求的url上：
+```
+ chatState.chatInstance = new WebSocket(
+    import.meta.env.VITE_WS_CHAT_URL + token
+  );
+ chatState.chatInstance.onopen = (res) => {
+    console.log("实例化成功", res);
+    // 开启心跳
+    chatState.chatInstance.send(JSON.stringify({ msg: "[PING]" }));
+ };
+// 监听接收的信息
+chatState.chatInstance.onmessage = (res) => {
+ ...
+})
+```
+这样就完成了一个简单的websocket连接。
+
+### 心跳
+websocket并在不收发信息的情况下并不能一直维持连接，所以我们需要做心跳来维持websocket的连接，心跳这个名字我觉得形容的很恰当，心不跳自然就断开了，做心跳要和服务端约定好，我这里传一个`[PING]`，服务端就会返回一个`[PONG]`，我们在收到服务器消息的时候写一个定时器，过30s后我们再次发送，这样就能通过心跳维持WS的连接了。
+
+### 聊天信息的流式输出
+因为在聊天的时候可能出现一些长文本，为了优化用户体验，我们需要实现一个流式输出的功能，我跟后端约定聊天的回复会一个字或几个字的传回来，但他们前后必须是有`[BEGIN]`和`[DONE]`消息的，所以在接收到相关的消息是我们将字符一个个拼接起来就能实现流式效果了。
+
+### 语音的流式播放
+同样的，长文本的语音播放太慢了，所以实现了一个语音的流式播放（真折磨）,这里我同样使用到了websocket，后端将TTS合成的二进制数据，然后一段段的传回来，这里我用到了一个库`pcm-player`：
+```
+const initPlayer = (index) => {
+  ttsState.audioInstance[index] = new PCMPlayer({
+    encoding: "16bitInt", //编码 可能的值 8bitInt / 16bitInt / 32bitInt / 32bitFloat 默认值：16bitInt
+    channels: 1, // PCM 数据中的通道数
+    sampleRate: 16000, // PCM 数据的采样率
+    flushTime: 2000, //  以毫秒为单位播放的 PCM 数据的刷新间隔。默认 1000ms
+    onended: onPlayerEnd,
+  });
+};
+
+
+
+chatState.ttsInstance.onmessage = async (res) => {
+      // 转化数据格式
+      const arrayBuffer = await res.data.arrayBuffer();
+      const newUint8Array = new Uint8Array(arrayBuffer);
+      ttsState.audioInstance[ttsState.isActiveIndex].feed(newUint8Array);
+    
+};
+```
+我们把接收到的一段段`Blob`数据传给player实例的feed方法，但需要注意的是只接收`TypedArray`类型或`ArrayBuffer`类型，等待缓冲完毕之后音频就会播放出来了，这些属性类型有些同学可能会觉得陌生，他们都是是处理二进制数据必不可少了，在下篇文章我会将使用到的二进制对象和他们直接如何转化的相关内容整理到一起。
+
+等你实现了功能后，你就会发现，坑爹的包连个播放开始钩子都没有，播放结束钩子`onended`也不准，播放长语音的时候播放到中通就调用了。看来想偷懒少读代码也是件难事，我们展开看看这个包，写的挺好的就是封装的比较简洁，作者也应该没有再维护了，但我还是去提了个issues：
+![image](https://github.com/coderInwind/inwindBlog/assets/91716457/22ce07bb-52d9-44ab-a243-7fdddb2d1737)
+
+那么只能自己动手了，首先我们分析一下它的源码：
+
+```
+class PCMPlayer {
+  constructor(option) {
+    this.init(option)
+  }
+
+  init(option) {
+    const defaultOption = {
+      inputCodec: 'Int16', // 传入的数据是采用多少位编码，默认16位
+      channels: 1, // 声道数
+      sampleRate: 8000, // 采样率 单位Hz
+      flushTime: 1000 // 缓存时间 单位 ms
+    }
+
+    this.option = Object.assign({}, defaultOption, option) // 实例最终配置参数
+    this.samples = new Float32Array() // 样本存放区域
+    this.interval = setInterval(this.flush.bind(this), this.option.flushTime) //循环处理PCM数据
+    this.convertValue = this.getConvertValue() 
+    this.typedArray = this.getTypedArray()
+    this.initAudioContext()
+    this.bindAudioContextEvent()
+  }
+
+  getConvertValue() {
+    // 根据传入的目标编码位数
+    // 选定转换数据所需要的基本值
+    const inputCodecs = {
+      'Int8': 128,
+      'Int16': 32768,
+      'Int32': 2147483648,
+      'Float32': 1
+    }
+    if (!inputCodecs[this.option.inputCodec]) throw new Error('wrong codec.please input one of these codecs:Int8,Int16,Int32,Float32')
+    return inputCodecs[this.option.inputCodec]
+  }
+
+  getTypedArray() {
+    // 根据传入的目标编码位数
+    // 选定前端的所需要的保存的二进制数据格式
+    // 完整TypedArray请看文档
+    // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypedArray
+    const typedArrays = {
+      'Int8': Int8Array,
+      'Int16': Int16Array,
+      'Int32': Int32Array,
+      'Float32': Float32Array
+    }
+    if (!typedArrays[this.option.inputCodec]) throw new Error('wrong codec.please input one of these codecs:Int8,Int16,Int32,Float32')
+    return typedArrays[this.option.inputCodec]
+  }
+
+  initAudioContext() {
+    // 初始化音频上下文的东西
+    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    // 控制音量的 GainNode
+    // https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/createGain
+    this.gainNode = this.audioCtx.createGain()
+    this.gainNode.gain.value = .1
+    this.gainNode.connect(this.audioCtx.destination)
+    this.startTime = this.audioCtx.currentTime
+  }
+
+  static isTypedArray(data) {
+    // 检测输入的数据是否为 TypedArray 类型或 ArrayBuffer 类型
+    return (data.byteLength && data.buffer && data.buffer.constructor == ArrayBuffer) || data.constructor == ArrayBuffer;
+  }
+
+  isSupported(data) {
+    // 数据类型是否支持
+    // 目前支持 ArrayBuffer 或者 TypedArray
+    if (!PCMPlayer.isTypedArray(data)) throw new Error('请传入ArrayBuffer或者任意TypedArray')
+    return true
+  }
+
+  feed(data) {
+    this.isSupported(data)
+
+    // 获取格式化后的buffer
+    data = this.getFormattedValue(data);
+    // 开始拷贝buffer数据
+    // 新建一个Float32Array的空间
+    const tmp = new Float32Array(this.samples.length + data.length);
+    // console.log(data, this.samples, this.samples.length)
+    // 复制当前的实例的buffer值（历史buff)
+    // 从头（0）开始复制
+    tmp.set(this.samples, 0);
+    // 复制传入的新数据
+    // 从历史buff位置开始
+    tmp.set(data, this.samples.length);
+    // 将新的完整buff数据赋值给samples
+    // interval定时器也会从samples里面播放数据
+    this.samples = tmp;
+    // console.log('this.samples', this.samples)
+  }
+
+  getFormattedValue(data) {
+    if (data.constructor == ArrayBuffer) {
+      data = new this.typedArray(data)
+    } else {
+      data = new this.typedArray(data.buffer)
+    }
+
+    let float32 = new Float32Array(data.length)
+
+    for (let i = 0; i < data.length; i++) {
+      // buffer 缓冲区的数据，需要是IEEE754 里32位的线性PCM，范围从-1到+1
+      // 所以对数据进行除法
+      // 除以对应的位数范围，得到-1到+1的数据
+      // float32[i] = data[i] / 0x8000;
+      float32[i] = data[i] / this.convertValue
+    }
+    return float32
+  }
+
+  volume(volume) {
+    this.gainNode.gain.value = volume
+  }
+
+  destroy() {
+    if (this.interval) {
+      clearInterval(this.interval)
+    }
+    this.samples = null
+    this.audioCtx.close()
+    this.audioCtx = null
+  }
+
+  flush() {
+
+    if (!this.samples.length) return
+    const self = this
+    // 生成声音节点
+    var bufferSource = this.audioCtx.createBufferSource()
+    if (typeof this.option.onended === 'function') {
+      bufferSource.onended = function (event) {
+        self.option.onended(this, event)
+      }
+    }
+    const length = this.samples.length / this.option.channels
+
+    // 生成内存操作视图,接收三个参数
+    const audioBuffer = this.audioCtx.createBuffer(this.option.channels, length, this.option.sampleRate)
+
+    for (let channel = 0; channel < this.option.channels; channel++) {
+      // 获取该通道的PCM数据
+      const audioData = audioBuffer.getChannelData(channel)
+      let offset = channel
+      let decrement = 50
+      // 将数据填充
+      for (let i = 0; i < length; i++) {
+        audioData[i] = this.samples[offset]
+        /* fadein */
+        if (i < 50) {
+          audioData[i] = (audioData[i] * i) / 50
+        }
+        /* fadeout*/
+        if (i >= (length - 51)) {
+          audioData[i] = (audioData[i] * decrement--) / 50
+        }
+        offset += this.option.channels
+      }
+    }
+
+    // 格式化播放时间
+    if (this.startTime < this.audioCtx.currentTime) {
+      this.startTime = this.audioCtx.currentTime
+    }
+    
+    // 将数据添加到节点
+    bufferSource.buffer = audioBuffer
+    // 连接节点
+    bufferSource.connect(this.gainNode)
+    // 开始播放声源
+    bufferSource.start(this.startTime)
+    // 存储在缓存区的 PCM 数据的时长
+    this.startTime += audioBuffer.duration
+    // 处理完数据后重置
+    this.samples = new Float32Array()
+  }
+
+  async pause() {
+    await this.audioCtx.suspend()
+  }
+
+  async continue() {
+    await this.audioCtx.resume()
+  }
+
+  bindAudioContextEvent() {
+    const self = this
+    if (typeof self.option.onstatechange === 'function') {
+      this.audioCtx.onstatechange = function (event) {
+        self.audioCtx && self.option.onstatechange(this, event, self.audioCtx.state)
+      }
+    }
+  }
+
+}
+
+export default PCMPlayer
+```
+并没有那么难懂，建议结合着MDN看，里面并没有我想要的钩子，所以我自己动手在外部实现了。
+
+首先是`onended`，读完源码之后了解到了其内部回调的`onended`，钩子并不一定是整个音频的钩子，也可能是一段音频的钩子，所以才会出现有多次的`onended`回调，那么如何监听的整个音频播放完毕呢？
+```
+const onPlayerEnd = (e) => {
+  ttsState.currentByteLength += e.buffer.length;
+  if (ttsState.currentByteLength * 2 >= ttsState.byteLength) {
+    ttsState.isActiveIndex = null;
+    ttsState.currentByteLength = 0;
+    ttsState.byteLength = 0;
+    ttsState.currentTime;
+    ttsState.loadingComplate = false;
+  }
+};
+```
+我在接收数据时统计了整个的字节大小，然后在`onended`的回调中与`target`做对比，就可以得出是不是全部播放完毕了。
+
+其次是`onstarted`，经过我的测试，无论是在弱网环境还是长语言的情况下，播放语言加载的时间差不多在1s左右：
+![image](https://github.com/coderInwind/inwindBlog/assets/91716457/799e063a-8a19-4152-bc1c-94fd96e629f7)
+所以直接就用了一个一秒钟的定时器解决，大家有好的方法可以发到评论区交流交流。
+
+
+  

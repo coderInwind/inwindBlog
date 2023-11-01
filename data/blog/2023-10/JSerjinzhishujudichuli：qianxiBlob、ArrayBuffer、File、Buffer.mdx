@@ -1,0 +1,73 @@
+---
+  title: JS二进制数据的处理：浅析Blob、ArrayBuffer、File、Buffer
+  date: 2023-10-24T06:27:57Z
+  summary:
+  tags: ["JavaScript"]
+---
+  
+  ### 前言
+最近一直在对接媒体相关的需求，流媒体播放、语音输入之类的，踩了很多坑，总结下来是自己对于二进制数据的处理并不是很熟悉，今天抽空整理了一下相关二进制处理对象的使用和他们互相之间的转化。
+
+### Blob
+[blob](https://developer.mozilla.org/zh-CN/docs/Web/API/Blob/Blob)全称是 _Binary Large Object_ 表示一个不可变，原始类型的类文件对象，它可以是图片、音频、视频等，它的数据可以按照文本或二进制的格式进行读取。
+
+blob()包含两个参数
++ array 是一个由[ArrayBuffer](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer), [ArrayBufferView](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/TypedArray), [Blob](https://developer.mozilla.org/zh-CN/docs/Web/API/Blob), [DOMString](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/String) 等对象构成的 [Array](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Array) ，或者其他类似对象的混合体，它将会被放进 [Blob](https://developer.mozilla.org/zh-CN/docs/Web/API/Blob)。DOMStrings 会被编码为 UTF-8。
++ options 是一个可选的BlobPropertyBag字典，它可能会指定如下两个属性：
+
+   - type，默认值为 ""，它代表了将会被放入到 blob 中的数组内容的 MIME 类型。
+   - endings，默认值为"transparent"，用于指定包含行结束符\n的字符串如何被写入。它是以下两个值中的一个："native"，代表行结束符会被更改为适合宿主操作系统文件系统的换行符，或者 "transparent"，代表会保持 blob 中保存的结束符不变 非标准
+
+我们可以尝试构造一个`domString`的`Blob`：
+```
+let array = ['<a id="a"><b id="b">hey!</b></a>']
+const blob = new Blob([array],"text/html")
+```
+当然也可以是其他的[MIME类型](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types)：
+
+
+### Flie
+`File`继承了`Blob`的所有属性，可以看成一个特殊的`Blob`，且可以用在任意的 Blob 类型的 context 中。比如说， [FileReader](https://developer.mozilla.org/zh-CN/docs/Web/API/FileReader), [URL.createObjectURL()](https://developer.mozilla.org/zh-CN/docs/Web/API/URL/createObjectURL_static), [createImageBitmap()](https://developer.mozilla.org/en-US/docs/Web/API/createImageBitmap), 及 [XMLHttpRequest.send()](https://developer.mozilla.org/zh-CN/docs/Web/API/XMLHttpRequest#send()) 都能处理 Blob 和 File。
+
+从常见的来看，我们通过`input`标签上传一个文件，得到的就是一个`File`
+
+
+### ArrayBuffer
+`ArrayBuffer` 对象用来表示通用的、固定长度的原始二进制数据缓冲区。
+它是一个字节数组，通常在其他语言中称为“byte array”。你不能直接操作 ArrayBuffer 中的内容；而是要通过[类型化数组对象](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/TypedArray)或 [DataView](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView) 对象来操作，它们会将缓冲区中的数据表示为特定的格式，并通过这些格式来读写缓冲区的内容。
+
+[ArrayBuffer()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer/ArrayBuffer) 构造函数创建一个以字节为单位的给定长度的新 ArrayBuffer。你也可以从现有的数据（例如，从 [Base64](https://developer.mozilla.org/zh-CN/docs/Glossary/Base64) 字符串或者[从本地文件](https://developer.mozilla.org/zh-CN/docs/Web/API/FileReader/readAsArrayBuffer)）获取数组缓冲区。
+
+#### 使用DataView操作
+```
+ // 新建一个buffer
+  const buffer = new ArrayBuffer(16)
+  const dataView = new DataView(buffer)
+  // 向buffer中放入一个4字节的数据 1
+  dataView.setInt32(0, 1)
+
+  console.log(dataView);
+```
+可以打印出以下结果
+![image](https://github.com/coderInwind/inwindBlog/assets/91716457/62838808-ed53-4f3d-97fd-154e8d89f210)
+这就是基本的使用，我们可以设置8-bit、16-bit、32-bit、64-bit的写入和读取，设置写入的偏移量，需要注意的是64-bit数据的类型得是大数（bigint）。
+
+#### 使用TypedArray操作
+```
+const buffer = new ArrayBuffer(16)
+
+  const typedArray = new Int16Array(buffer)
+
+  typedArray[0] = 16  
+
+  console.log(typedArray);
+```
+可以打印出以下结果
+![image](https://github.com/coderInwind/inwindBlog/assets/91716457/f7ab52c4-2eb7-4397-91a4-87cfd28c9b84)
+
+
+
+
+
+
+  
