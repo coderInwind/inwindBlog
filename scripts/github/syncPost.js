@@ -28,11 +28,6 @@ const generateMdx = (issue) => {
   `
 }
 
-// // 处理/新增标签
-// const  generateTags = (thisTags)=>{
-
-// }
-
 // 分组写入
 const outPutPath = path.resolve(__dirname, '../../data/blog')
 
@@ -41,22 +36,20 @@ const blockWrite = (item) => {
   const content = generateMdx(item)
   const tempFileName = item.title
   const date = new Date()
-  const blocksName = date.getFullYear() + '-' + date.getMonth()
 
   const fileName = pinyin(tempFileName, {
     style: 0,
   }).join('')
 
   // 访问性测试
-  const blocksPath = outPutPath + '/' + blocksName
   try {
-    fs.accessSync(blocksPath, fs.constants.R_OK && fs.constants.W_OK)
+    fs.accessSync(outPutPath, fs.constants.R_OK && fs.constants.W_OK)
   } catch (e) {
     // 创建目录
-    fs.mkdirSync(blocksPath)
+    fs.mkdirSync(outPutPath)
   }
 
-  fs.writeFileSync(`${outPutPath}/${blocksName}/${fileName}.mdx`, content)
+  fs.writeFileSync(`${outPutPath}/${fileName}.mdx`, content)
 }
 
 function main() {
