@@ -25,7 +25,7 @@
 </html>
 
 ```
-从`dist/vue.js`引入了打包后的 vue，传入要挂载的 DOM 的 id，template参数，vue 就成功渲染出来了，但今天
+从`dist/vue.js`引入了打包后的 vue，传入要挂载的 DOM 的 id，template参数，vue 就成功渲染出来了，今天从外到内看看是怎么实现的
 
 ## Vue 的版本
 接下来我们从外往里地往下看，Vue 使用的 rollup 打包，配置文件位于 script 文件夹的 config.js 中，这里面着各种版本的打包配置，不同的版本有着不同的功能，runtime 表示包含 Vue 运行时的版本，compiler 表示包含编译器的版本，编译器可以识别我们写的 template，如果不包含 compiler 就仅能处理 rander 函数，我找到当前使用的同时有 runtime 和 compiler 的版本，也就是`web-full-dev`
