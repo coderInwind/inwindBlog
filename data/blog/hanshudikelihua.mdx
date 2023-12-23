@@ -1,0 +1,69 @@
+---
+  title: 函数的柯里化
+  date: 2023-12-23T12:48:50Z
+  summary:
+  tags: []
+---
+  
+  ## 柯里化？
+函数的柯里化指的是把一个有多个参数的函数转换成一个只接收部分参数，其他参数由该函数里返回的函数接收的函数
+例：
+```
+function foo(x,y,z){
+  console.log(x+y+z);
+}
+foo(2,3,4)
+
+function bar1(x){
+  return function(y){
+    return function(z){
+      return x+y+z
+    }
+  }
+}
+console.log(bar(2)(3)(4));
+
+//可以写成箭头函数
+const bar2 = (x) =>{
+	return (y)=>{
+		return (z)=>{
+			return x+y+z
+		}
+	}
+}
+
+再简化
+const bar = (x) => (y) => (z) => x + y + z;
+
+console.log(bar(2)(3)(4));
+```
+## 为什么要柯里化
+目的是让各个函数的职责变得单一
+## 实现一个柯里化的工具函数
+```
+function currying(fn) {
+  //返回处理过的柯里化函数
+  function curried1(...args1) {
+    //当参数个数达到传入的参数个数，就执行
+    if (args1.length >= fn.length) {
+      return fn.apply(this,args1)
+    }else{
+      //没有达到，进行递归处理参数
+      return function curried2(...args2){
+        return curried1.apply(this,([...args1,...args2]))
+      }
+    }
+  }
+  return curried1;
+}
+
+function add(x, y, z) {
+  return x + y + z;
+}
+
+let newCurrying = currying(add);
+
+console.log(newCurrying(10)(20)(30));
+//输出60
+```
+  

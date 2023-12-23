@@ -1,0 +1,112 @@
+---
+  title: ES6的新特性
+  date: 2023-12-23T12:48:31Z
+  summary:
+  tags: []
+---
+  
+  ## 数组的解构
+```
+const  arr = ["item1","item2","item3"]
+//当值not defined时给它一个默认值
+const [item1,item2,item3,item4 = "abc"] = arr
+
+console.log(item1,item2,item3,item4);
+//输出item1 item2 item3 abc
+
+console.log(...arr);
+//输出item1 item2 item3
+```
+## 对象的解构
+```
+const obj = {
+  name: "in wind",
+  age: 18,
+  height: 18.8,
+};
+const {name,age,height} = obj
+
+console.log(name,age,height);
+//输出in wind 18 18.8
+//配置别名和默认值
+const {sex:mySex = "男"} = obj
+
+console.log(mySex);
+//输出 男
+```
+## const/let
+const定义的是一个常量，定义的值是不可以被修改的
+那为什么定义一个对象或者数组的时候，可以修改对象的属性或者数组的某个值呢
+因为const定义对象或者数组的时候，保存的是他们的内存地址，指向堆中创建出的的数组或对象
+进行修改时，该指针并不会改变
+let定义一个变量
+## var和let/const的区别
+1、var能重复定义，而let和const不行
+2、var会造成变量提升，即在声明变量之前能被访问，而let和const没有变量提升，虽然他被创建出来了，但不能被访问到
+## 块级作用域
+function(){} {} if(){} for(){}等
+## 暂时性死区
+```
+var a = "abc"
+if(true){
+//在一个块级作用域内，如果在let和const之前使用声明的变量，就会产生暂时性死区
+	console.log(a)
+	let a = "cba"
+}
+```
+## for of 和 for in
+```
+const arr = [1,2,3,4,5]
+const obj = {a:"aaa",b:"bbb",c:"ccc"}
+//for of遍历数组
+for(const item of arr){
+  console.log(item);
+//输出数组的值1,2,3,4,5
+}
+//for of遍历对象会报错，因为没有迭代器对象
+for(const item in arr){
+	console.log(item);
+//输出数组的key
+}
+
+for(const item in obj){
+	console.log(item)
+//输出对象的key
+}
+```
+## 模板字符串
+```
+//模板字符串
+const name = "inwind"
+console.log(`这是${name}的博客`)
+//输出 这是inwind的博客
+
+//标签模块字符串
+function foo(m,n,y){
+  console.log(m,n,y);
+//输出[ '我是', '身高', '米' ] inwind 18.8
+}
+const name = "inwind"
+const height = 18.8
+foo`我是${name}身高${height}米
+```
+## 函数参数的默认值
+基本的就不提了，说一些细节
+```
+函数的length
+function foo(a,b,c="1.88"){
+  
+}
+console.log(foo.length);
+//被设置默认值的参数是不会被算的函数length里的
+```
+## 函数的剩余参数
+```
+function foo(a,b,...args){
+	console.log(args)
+//输出['c','d','e','f','g']
+}
+
+foo("a","b","c","d","e","f","g")
+```
+  
