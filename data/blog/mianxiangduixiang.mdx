@@ -1,0 +1,130 @@
+---
+  title: 面相对象
+  date: 2023-12-23T12:44:44Z
+  summary:
+  tags: []
+---
+  
+  ## 面向对象的三大特性
+### 封装
+### 继承
+### 多态
+## Object.defineProperty()
+使用Object.defineProperty在obj上创建一个新的属性后打印
+```
+var obj = {
+  name:"inwind",
+  age:18,
+}
+
+Object.defineProperty(obj,"height",{
+  value:"188",
+})
+
+console.log(obj);
+console.log(obj.height);
+```
+卧槽，为什么直接打印obj，没有height属性，但直接打印obj.height却打印地出来
+因为创建出来的height不是一个可枚举的属性
+## 属性描述符
+Object.defineProperty()的第三个参数，分为数据属性描述符和存取属性描述符。
+![属性描述符](http://82.157.237.225:4000/images/属性描述符.jpg)
+```
+var obj = {
+  name:"inwind",
+  age:18,
+}
+//
+Object.defineProperty(obj,"height",{
+  value:"188",
+//是否可删除（默认为false）
+  configurable:false,
+//是否可迭代（默认为false）
+  enumerable:true
+//是否可写入（默认为false）
+	writable:true
+})
+
+Object.defineProperty(obj,"height",{
+  configurable:true,
+  enumerable:true,
+  get(){
+    console.log("获取到了");
+  },
+  set(value){
+    console.log("设置了新值"+value);
+  }
+})
+
+obj.height = "asd"
+```
+## 获取一个属性描述符Object.getOwnPropertyDescriptor
+console.log(Object.getOwnPropertyDescriptor(obj,"height"));
+## 获取对象所有的属性描述符Object.getOwnPropertyDescriptors
+console.log(Object.getOwnPropertyDescriptor(obj));
+## 对象的原型
+每个对象都有一个__proto__属性，可以称为对象的隐式原型
+## 函数的原型
+函数也是个对象，所以它也有__proto__属性，同时函数有一个prototype属性，称之为显式原型
+![创建对象的内存表现](http://82.157.237.225:4000/images/创建对象的内存表现.jpg)
+
+fn和fn的原型对象的指向是一个闭环，甚至可以fn.prototype.constructor.prototype.constructor 。。。
+## 原型链
+当在访问对象的属性时，如果找不到，就会到__proto__对象上查找，如果还是找不到，继续向上，这就叫做原型链
+## new一个对象执行了怎么操作
+1、创建一个空对象
+2、this赋值
+3、将Object.prototype赋值给该对象的__proto__
+## Object原型
+Object是最顶层的原型，Object原型上有很多方法
+## 原型链继承
+继承旨继承属性和方法，两个不相干的构造函数，实现让student继承person的属性，由图可以看到，student将指针指向了person的对象完成了继承，如果在定义studying方法之后才完成继承，那么这个方法将会丢失
+```
+function person() {
+  this.name = "inwind";
+}
+person.prototype.eating = () => {
+  console.log("人吃饭");
+};
+
+student.prototype = new person()
+
+function student() {
+  this.id = "12138";
+}
+student.prototype.studying = () => {
+  console.log("学生学习");
+};
+
+
+const stu = new student()
+stu.eating()
+stu.studying()
+```
+![原型链继承图解](http://82.157.237.225:4000/images/原型链继承图解.jpg)
+原型链继承的弊端：继承的属性是不可枚举的(直接打印对象看不到)。如果继承的构造函数new了两个对象，修改他们的属性，如果这个属性是通过查找原型链来获取的，那么他们的属性是会互相影响的。如果继承的构造函数有参数，那么便不好处理
+```
+function person(name) {
+  this.name = name;
+}
+person.prototype.eating = () => {
+  console.log("人吃饭");
+};
+
+student.prototype = new person("inwind")
+
+function student(id) {
+  person.call(this,id)
+  this.id = id;
+}
+student.prototype.studying = () => {
+  console.log("学生学习");
+};
+
+
+const stu = new student(123)
+
+console.log(stu);
+```
+这种方案能解决以上问题，不过还是有弊端，person函数被调用了两次
+  
