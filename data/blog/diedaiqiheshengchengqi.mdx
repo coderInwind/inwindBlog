@@ -1,0 +1,102 @@
+---
+  title: 迭代器和生成器
+  date: 2023-12-23T12:49:47Z
+  summary:
+  tags: []
+---
+  
+  ## 什么是迭代器
+迭代器（iterator）能让我们在某个数据结构上进行遍历的对象
+在 JavaScript 中，迭代器是一个对象，它定义一个序列，并在终止时可能返回一个返回值。 更具体地说，迭代器是通过使用 next() 方法实现迭代器协议（Iterator protocol）的任何一个对象，该方法为无参数或者一个参数的函数
+该方法返回具有两个属性的对象： value，这是序列中的 next 值；和 done ，如果已经迭代到序列中的最后一个值，则它为 true 。如果 value 和 done 一起存在，则它是迭代器的返回值。
+一旦创建，迭代器对象可以通过重复调用next（）显式地迭代。 迭代一个迭代器被称为消耗了这个迭代器，因为它通常只能执行一次。 在产生终止值之后，next（）返回{done：true}。
+```
+//实现一个迭代器
+const arr = ['aaa','bbb','ccc','ddd']
+
+let i = 0
+const iterator = {
+  next:function(){
+    if(i<arr.length){
+      return {done:false,value:arr[i++]}
+    }else{
+      return {done:true,value:undefined}
+    }
+  }
+}
+
+console.log(iterator.next());
+console.log(iterator.next());
+console.log(iterator.next());
+console.log(iterator.next());
+console.log(iterator.next());
+```
+## 可迭代对象
+若一个对象拥有迭代行为（即能返回一个迭代器），比如在 for...of 中会循环哪些值，那么那个对象便是一个可迭代对象。一些内置类型，如 Array 或 Map 拥有默认的迭代行为，而其他类型（比如Object）则没有。
+为了实现可迭代，一个对象必须实现返回一个迭代器，这意味着这个对象（或其原型链中的任意一个对象）必须具有一个带 Symbol.iterator 键（key）的属性。
+```
+const iteratorObj = {
+  arr: ["aaa", "bbb", "ccc", "ddd"],
+  [Symbol.iterator]: function () {
+    let i = 0;
+    //返回一个迭代器
+    return {
+      next:() => {
+        if (i < this.arr.length) {
+          return { done: false, value: this.arr[i++] };
+        } else {
+          return { done: true, value: undefined };
+        }
+      },
+    };
+  },
+};
+
+const iterator = iteratorObj[Symbol.iterator]();
+console.log(iterator.next());
+console.log(iterator.next());
+console.log(iterator.next());
+console.log(iterator.next());
+console.log(iterator.next());
+//此时就解除了一个之前的疑惑，为什么for of遍历不了一个对象，因为对象不是一个可迭代对象
+for(let item of iteratorObj){
+  console.log(item);
+}
+
+//创建一个数组，数组里会内置有可迭代对象
+let arr = ["aaa", "bbb", "ccc", "ddd"];
+console.log(arr[Symbol.iterator]);
+let iterator = arr[Symbol.iterator]()
+console.log(iterator.next());
+console.log(iterator.next());
+console.log(iterator.next());
+console.log(iterator.next());
+console.log(iterator.next());
+```
+## 会自动生成迭代器的数据结构或对象
+String、Array、Set、Map、arguments、NodeLsit
+#生成器（generator）
+虽然自定义的迭代器是一个有用的工具，但由于需要显式地维护其内部状态，因此需要谨慎地创建。生成器函数提供了一个强大的选择：它允许你定义一个包含自有迭代算法的函数， 同时它可以自动维护自己的状态。 生成器函数使用 function*语法编写。 最初调用时，生成器函数不执行任何代码，而是返回一种称为Generator的迭代器。 通过调用生成器的下一个方法消耗值时，Generator函数将执行，直到遇到yield关键字。
+上面是 mdn 的解释，通俗的来讲，yield就是形成了一个个断点
+```
+//生成器
+function*generatorFn(){
+
+  console.log("代码执行开始");
+
+  const a = 2
+  yield a
+  
+  const b = 3
+  yield b
+  console.log("代码执行完毕");
+  return "asdasdas"
+}
+
+let generator = generatorFn()
+console.log(generator.next());
+//next()可以传入一个参数，这个参数会作为上一个yield的返回值
+console.log(generator.next());
+console.log(generator.next()); 
+```、
+  

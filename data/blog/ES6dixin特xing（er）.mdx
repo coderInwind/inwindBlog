@@ -1,0 +1,64 @@
+---
+  title: ES6的新特性（二）
+  date: 2023-12-23T12:49:13Z
+  summary:
+  tags: []
+---
+  
+  ## Symbol
+```
+//symbol能生成一个独一无二的值,可以给该值添加一个描述
+let a = Symbol("ada")
+console.log(a.description);
+```
+symbol可以作为对象的key
+symbol.for()/symbol.keyfor()
+## 数据结构Set
+set里面不会出现相同的元素，可以用于数组去重
+```
+const set = new Set()
+//add：添加一个元素
+set.add(1)
+set.add(2)
+set.add(1)
+console.log(set);
+//输出Set(2) { 1, 2 }
+
+//delete：删除一个元素
+set.delete(1)
+console.log(set);
+//输出Set(1) { 2 }
+
+//clear：清空所有元素
+set.clear()
+console.log(set);
+//Set(0) {  }
+
+//has：是否包含某个元素
+set.has(2)
+//包含返回true，不包含返回false
+```
+## 数据结构weakSet
+？？？weakSet和set有啥区别？
+weakSet只能存放对象类型，并且对对象的引用是个弱引用，没办法做遍历操作
+？？？什么是弱引用？
+对于浏览器而言，弱引用相当于这个指向不存在，还是会被垃圾回收
+弱引用存在的意义在于能让其访问到相应的值
+## 数据结构Map
+用于存储映射关系，对象中是不允许对象类型作为key的，而在map中可以
+```
+let obj1 = {name:"inwind"}
+let obj2 = {height:18.8}
+
+let map = new Map([[obj1,"123"],[obj2,"456"]])
+console.log(map);
+//输出Map(2) { { name: 'inwind' } => '123', { height: 18.8 } => '456' }
+```
+方法map.set()、map.get、map.has()、map.delete()、map.clear()、
+### map和object有什么区别
+map是可迭代对象，object不是，可以用Object.entries()、Object.keys()、Object.value进行迭代
+map的key可以是任意值，而object的值只能是string或者symbol
+map里存放有几个键值对可以通过Map.size轻松获取，而object只能自行获取
+## 数据结构weakMap
+key只能是对象，存放的对象的引用是个弱引用
+  

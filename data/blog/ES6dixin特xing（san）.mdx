@@ -1,0 +1,131 @@
+---
+  title: ES6的新特性（三）
+  date: 2023-12-23T12:49:31Z
+  summary:
+  tags: []
+---
+  
+  ## Array.prototype.includes
+判断数组中是否存在该元素
+arr.includes(判断的元素,从第几个下标开始)
+## 平方运算符
+计算3的3次方
+3**3
+## Object.value()
+之前有一个Object.key方法能拿到对象所有的key
+这个是与之对应的拿到对象所有的value
+## Object.entries()
+将对象的键值对放入数组
+```let obj = {
+  name:"inwind",
+  age:18,
+  height:18.8
+}
+
+console.log(Object.entries(obj));
+```
+## String.prototype.padStart和String.prototype.padEnd
+```const text = "我是inwind"
+const newtext = text.padStart(15,"*")
+//使用*将字符串从开头填充到十五位
+console.log(newtext);
+
+const text = "我是inwind"
+const newtext = text.padEnd(15,"*")
+//使用*将字符串从结尾填充到15位
+console.log(newtext);
+```
+## Array.prototype.flat和Array.prototype.flatMap
+```
+const arr = [1,[2,3],[4,5,[6,7],8],9,10]
+//给对应数组降维，默认值是1
+const newArr = arr.flat()
+console.log(newArr);
+```
+flatMap顾名思义，flat和map的结合。。。
+## Object.fromEntries
+之前的文章提到object.entrises可以把一个对象键值对转化为数组并由数组包裹
+而fromEntries可以将这种格式转回成对象
+```
+const obj = {name:"inwind",age:18,height:1.88}
+const newObj = Object.entries(obj)
+console.log(newObj);
+//输出[ [ 'name', 'inwind' ], [ 'age', 18 ], [ 'height', 1.88 ] ]
+
+const oldObj = Object.fromEntries(newObj)
+console.log(oldObj);
+//输出{ name: 'inwind', age: 18, height: 1.88 }
+```
+## String.prototype.trimStart和String.prototype.trimEnd
+与trim同理，去除字符串前面的空格or后面的空格
+## bigInt
+Number.MAX_SAFE_INTEGER可以获取到js中数的最大值为9007199254740991，不能再继续往上计算
+而使用bigInt类型可以，
+```
+const bigInt = 9007199254740991n
+console.log(Number(bigInt+7n));
+```
+## ??逻辑空运算符
+```
+let a = null
+//当前面一个为null或undfined时，执行后面一个
+let b = a ?? "default value"
+
+console.log(b);
+```
+## 可选链
+```
+let obj = {
+  name:"inwind",
+  friend:{
+    name:"katom",
+  }
+}
+//当查找不到某个值时，返回undfined
+console.log(obj.friend?.name);
+console.log(obj.friend?.age);
+```
+## globalThis
+获取当前的全局对象
+在浏览器环境下获取的是window，在node环境下获取的是global
+## finalizationRegistry类
+你可以在里面注册一个对象，在对象被GC垃圾回收时时，会回调传入的函数
+```
+let obj = {name:"inwind",height:18.8}
+    const finalization = new FinalizationRegistry(()=>{
+      console.log("被销毁了");
+    })
+//注册一个对象，可以传入一个值，这个值被作为回调函数的参数
+  finalization.register(obj,"value")
+  obj = null
+```
+## weakRef对引用类型建立一个弱引用
+```
+//用以上代码来进行验证，多添加一个引用，该对象依旧被销毁，可见这是一个弱引用
+let obj = { name: "inwind", height: 18.8 };
+let info = new WeakRef(obj)
+const finalization = new FinalizationRegistry(() => {
+	console.log("被销毁了");
+});
+
+finalization.register(obj, "value");
+obj = null;
+```
+如果想获取弱引用对象的属性，不能直接获取，
+如获取name,要使用info.deref().name获取
+## 新的运算符
+* 1、||= 逻辑或赋值运算
+* 2、&&= 逻辑与赋值运算
+* 3、??= 逻辑空赋值运算
+```
+let a = undefined
+a||="default value"
+//相当于a=a||"default value"
+
+a&&="default value"
+//相当于a=a&&"default value"
+
+a??="default value"
+//相当于a=a??"default value"
+```
+  

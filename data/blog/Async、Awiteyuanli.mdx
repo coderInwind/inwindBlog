@@ -1,0 +1,85 @@
+---
+  title: Async、Awite原理
+  date: 2023-12-23T12:50:11Z
+  summary:
+  tags: []
+---
+  
+  我想在异步中调用一个异步，在在这个异步中调用一个异步
+```
+function require(url) {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        resolve(url);
+      }, 2000);
+    });
+  }
+
+require("url").then((res) => {
+  require(res + "url2").then((res) => {
+    require(res + "url3").then((res) => {
+      console.log(res);
+    });
+  });
+});
+```
+
+回调地狱产生了，显然这个不是一个好的办法，有更好的办法
+```
+//方案一
+require("url")
+  .then((res) => {
+    return require(res+"url2");
+  })
+  .then((res) => {
+    return require(res+"url3");
+  })
+  .then((res) => {
+    console.log(res);
+  });
+	
+//promise+generator
+function* urlGenerator() {
+  const res1 = yield require("url");
+  const res2 = yield require(res1+"url2")
+  yield require(res2+"url3")
+}
+//怎么还是回调地狱
+const generator = urlGenerator();
+generator.next().value.then((res) =>{
+  generator.next(res).value.then(res=>{
+    generator.next(res).value.then(res=>{
+      console.log(res);
+    })
+  })
+});
+//使用递归来实现
+function execGenerator(generatorFn) {
+  const generator = generatorFn();
+  function exec(res) {
+    const result = generator.next(res);
+    if (result.done) {
+      return result.value;
+    }
+    result.value.then((res) => {
+      exec(res);
+    });
+  }
+  exec();
+}
+execGenerator(urlGenerator)
+
+//其实并不需要那么的复杂
+async function urlGenerator() {
+  const res1 = await require("url");
+  const res2 = await require(res1 + "url2");
+  const res3 = await require(res2 + "url3");
+  console.log(res3);
+}
+
+urlGenerator()
+```
+## async/awite
+async/awite的本质就是promise和generator
+async里面的被awite的异步代码会同步执行
+  
