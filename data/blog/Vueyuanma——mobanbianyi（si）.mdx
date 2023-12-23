@@ -364,7 +364,7 @@ if (doctypeMatch) {
 }
 ```
 #### 2、结束标签 
-正则匹配结束标签 例如:`</span>`，值得注意的是正则匹配条件中有以 </开头，所以一般情况下第一次匹配的结果总是 null
+正则匹配结束标签 例如:`</span>`，值得注意的是正则匹配条件中有以 `</`开头，所以一般情况下第一次匹配的结果总是 null
 ```
 const endTagMatch = html.match(endTag);
 if (endTagMatch) {
