@@ -1,0 +1,49 @@
+---
+  title: Vue源码——初始化initLifecycle
+  date: 2023-12-23T12:25:31Z
+  summary:
+  tags: []
+---
+  
+  ## 前言
+在上一篇文章中，我们外到内了解了`Vue`是怎么样实例化出来的，以及`Vue`的初始化做的事情，在`_init`中调用了数个初始化函数，我们逐一地深入来理解这些函数。
+
+## initLifecycle分析
+```
+export function initLifecycle (vm: Component) {
+  const options = vm.$options
+
+  let parent = options.parent
+  if (parent && !options.abstract) {
+    while (parent.$options.abstract && parent.$parent) {
+      parent = parent.$parent
+    }
+    parent.$children.push(vm)
+  }
+ ...
+```
+这里判断当前组件不是<a href="/detail/1072" target="_black">抽象组件</a>或是存在着父级，那么就`while`向上层循环，如果父级是抽象组件或是存在父级，继续向上循环直到找到一个非抽象组件的父级为止，然后将`vm`添加给这个最顶层父级的`$children`数组中。
+```
+...
+  // 父级实例
+  vm.$parent = parent
+  // 根实例
+  vm.$root = parent ? parent.$root : vm
+  // 子实例
+  vm.$children = []
+  // ref引用
+  vm.$refs = {}
+
+  vm._watcher = null
+  vm._inactive = null
+  vm._directInactive = false
+  vm._isMounted = false
+  vm._isDestroyed = false
+  vm._isBeingDestroyed = false
+}
+```
+有意思的是`vm.$root`属性，当当前实例存在的父级时，他的`$root`就是父级的`$root`，那么有人就会问了，为什么是直接赋这个值而不用像上文一样一层层遍历呢，举一个例子：`$root`代表你的祖先，`$parent`和`vm`代表你爸爸和你，你的祖先就一定是你爸爸的祖先。而如果当前没有父级，那么根实例就是它自己，他以后儿孙的祖先就是它了。
+而后就是对`vm`对象上的属性进行简单的赋值，这里就不一一介绍他们的用途。
+## 总结
+`initLifecycle`函数主要是给`vm`对象添加一系列的属性，以`$`开头的公有属性，以及以`_`开头的表示私有属性。
+  
