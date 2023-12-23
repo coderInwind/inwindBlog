@@ -1,0 +1,262 @@
+---
+  title: Vue源码阅读——Vue内部的初始化流程
+  date: 2023-12-23T12:18:35Z
+  summary:
+  tags: []
+---
+  
+  ## new 一个 Vue 实例
+```
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="../dist/vue.js"></script>
+    <script>
+      new Vue({ el: "#app", template: "<span>Hello World</span>" });
+    </script>
+  </body>
+</html>
+
+```
+从`dist/vue.js`引入了打包后的 vue，传入要挂载的 DOM 的 id，template参数，vue 就成功渲染出来了，但今天
+
+## Vue 的版本
+接下来我们从外往里地往下看，Vue 使用的 rollup 打包，配置文件位于 script 文件夹的 config.js 中，这里面着各种版本的打包配置，不同的版本有着不同的功能，runtime 表示包含 Vue 运行时的版本，compiler 表示包含编译器的版本，编译器可以识别我们写的 template，如果不包含 compiler 就仅能处理 rander 函数，我找到当前使用的同时有 runtime 和 compiler 的版本，也就是`web-full-dev`
+```
+// @ scripts/config.js
+// Runtime+compiler development build (Browser)
+  'web-full-dev': {
+    // 入口路径
+    entry: resolve('web/entry-runtime-with-compiler.js'),
+    // 出口路径与文件名
+    dest: resolve('dist/vue.js'),
+    // 打包输出格式
+    format: 'umd',
+    // 环境
+    env: 'development',
+    alias: { he: './entity-decoder' },
+    banner
+  },
+``` 
+配置的 entry 没有直接使用路径，而是为了代码的简洁集中配置了别名
+```
+// @ scripts/alias.js
+module.exports = {
+  vue: resolve('src/platforms/web/entry-runtime-with-compiler'),
+  compiler: resolve('src/compiler'),
+  core: resolve('src/core'),
+  shared: resolve('src/shared'),
+  web: resolve('src/platforms/web'),
+  weex: resolve('src/platforms/weex'),
+  server: resolve('src/server'),
+  sfc: resolve('src/sfc')
+}
+```
+这里是我们当前版本（entry-runtime-with-compiler）的入口，此处就是做了编译（compiler）工作：
+```
+@ src/platforms/web/entry-runtime-with-compiler
+
+在Vue原型上添加了 $mount 方法
+const mount = Vue.prototype.$mount
+
+Vue.prototype.$mount = function (
+  el?: string | Element,
+  hydrating?: boolean
+): Component {
+  ...
+// 模板编译相关操作
+  ...
+}
+```
+
+我们再往里看，此处是 运行时（runtime）模块的入口：
+```
+@ src/platforms/web/runtime/index
+...
+Vue.prototype.$mount = function (
+  el?: string | Element,
+  hydrating?: boolean
+): Component {
+  // inBrowser 是 Vue 封装的一个工具函数 
+  // const inBrowser = typeof window !== 'undefined' 
+  // 用来判断当前环境是否为浏览器（根据需要安装devtools）
+  el = el && inBrowser ? query(el) : undefined;
+  // 进入挂载阶段
+  return mountComponent(this, el, hydrating);
+};
+...
+```
+如果使用的版本是 runtime 版本，是没有 compoiler 模块，也就是无法对 template 进行编译的，所以我们需要根据实际需求选择版本。
+
+## Vue 的初始化
+接下来就是 Vue 的核心代码了
+```
+initGlobalAPI(Vue)
+
+Object.defineProperty(Vue.prototype, '$isServer', {
+  get: isServerRendering
+})
+
+Object.defineProperty(Vue.prototype, '$ssrContext', {
+  get () {
+    /* istanbul ignore next */
+    return this.$vnode && this.$vnode.ssrContext
+  }
+})
+
+// expose FunctionalRenderContext for ssr runtime helper installation
+Object.defineProperty(Vue, 'FunctionalRenderContext', {
+  value: FunctionalRenderContext
+})
+
+Vue.version = '__VERSION__'
+```
+
+这里调用了 initGlobalAPI 函数，并传入了 Vue 的构造函数
+```
+// @src/core/global-api/index
+export function initGlobalAPI(Vue: GlobalAPI) {
+  const configDef = {}
+  configDef.get = () => config
+  if (process.env.NODE_ENV !== 'production') {
+    configDef.set = () => {
+      warn(
+        'Do not replace the Vue.config object, set individual fields instead.'
+      )
+    }
+  }
+  Object.defineProperty(Vue, 'config', configDef)
+```
+我们知道，传入的参数是 Vue 的构造函数，此处使用 Object.defineProperty 方法在Vue构造函数上新增了 config 属性，并定义该属性的<a target="_blank"
+href="https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Object/defineProperty">存取描述符</a>，仅允许获取，赋值时进行警告。
+
+然后挂载一系列的工具方法，这些相信我们大多都用过，我们在后面再做详细的了解：
+```
+ Vue.util = {
+    warn,
+    extend,
+    mergeOptions,
+    defineReactive,
+  };
+  Vue.set = set;
+  Vue.delete = del;
+  Vue.nextTick = nextTick;
+  // 2.6 explicit observable API
+  Vue.observable = <T>(obj: T): T => {
+    observe(obj);
+    return obj;
+  };
+```
+紧接着，在Vue上创建了一个空对象options：
+```
+Vue.options = Object.create(null);
+  // 变量常量数组 ASSET_TYPES  = ['component','directive','filter']，在 Vue.option 中创建空的对象
+  ASSET_TYPES.forEach((type) => {
+    Vue.options[type + "s"] = Object.create(null);
+  });
+  // 将 Vue.options._base 属性指向自身，此属性在下文中被用来判断是否为根实例
+  Vue.options._base = Vue;
+  // 这是shared中封装的一个工具函数，比较简单，
+  // 两参数都是对象，作用是将参数二中的属性插入到参数一中
+  // 此处将 Keep-alive 中缓存的数据合并到了 option
+  extend(Vue.options.components, builtInComponents);
+  
+  initUse(Vue);
+  initMixin(Vue);
+  initExtend(Vue);
+  initAssetRegisters(Vue);
+```
+此处调用了四个 init 开头的函数，我们先大致的做一下了解，这四个函数做的操作就是在 Vue 上添加相应的方法（use，mixin，extend），initAssetRegisters 内部通过数组的变量添加了三个方法。
+## Vue 的构造函数
+此处就是 Vue 开始的地方
+```
+@ src/core/instance/index.js
+import { initMixin } from "./init";
+import { stateMixin } from "./state";
+import { renderMixin } from "./render";
+import { eventsMixin } from "./events";
+import { lifecycleMixin } from "./lifecycle";
+import { warn } from "../util/index";
+
+function Vue(options) {
+  //判断是否以new关键字创建的vue实例，否则抛出警告
+  if (process.env.NODE_ENV !== "production" && !(this instanceof Vue)) {
+    warn("Vue is a constructor and should be called with the `new` keyword");
+  }
+  // 调用_init
+  this._init(options);
+}
+
+// 挂载_init方法
+initMixin(Vue);
+stateMixin(Vue);
+eventsMixin(Vue);
+lifecycleMixin(Vue);
+renderMixin(Vue);
+
+export default Vue;
+```
+那么问题来了，这个_init是哪来的？在下面调用的initMixin函数中，此处为Vue构造函数挂载了_init方法：
+```
+Vue.prototype._init = function (options?: Object) {
+    const vm: Component = this;
+    // uid是每个 Vue 实例的唯一标识
+    vm._uid = uid++;
+    // 一个避免被观察到的标记
+    vm._isVue = true;
+    // 对 option 进行合并操作，将相关的属性和方法合并到 vm.$options 对象之上
+    if (options && options._isComponent) {
+      // _isComponent 是Vue在创建组件流程中声明的属性
+      // 如果是子组件初始化时走这里,这里只做了一些性能优化
+      initInternalComponent(vm, options);
+    } else {
+     // 将用户传入配置合并到vm
+      vm.$options = mergeOptions(
+        // 合并 mixin 以及 extend 操作下影响的 option
+        resolveConstructorOptions(vm.constructor),
+        options || {},
+        vm
+      );
+    }
+
+    vm._self = vm;
+    // 初始化组件实例关系属性
+    initLifecycle(vm);
+    // 初始化自定义事件
+    initEvents(vm);
+    // 初始化 rander 和插槽
+    initRender(vm);
+    // 执行生命周期钩子beforeCreate
+    callHook(vm, "beforeCreate");
+    // 注入实例化
+    initInjections(vm);
+    // 数据响应式的实例化
+    initState(vm);
+    // 解析provide
+    initProvide(vm); // resolve provide after data/props
+    // 执行生命周期钩子created
+    callHook(vm, "created");
+
+    //最后，判断是否是否传入`el`，如果有就调用$mount进入模板编译阶段
+
+if (vm.$options.el) {
+      vm.$mount(vm.$options.el);
+  }
+    
+```
+
+## 总结
+经过上面的分析，可以归纳为一下几个流程
+![](http://cdn.liuji.site/illustration/1036/2022-11-14_22-38-27.jpg)
+1. 初始化 Vue 构造函数上的方法
+2. 实例化对象 vm
+3. 调用 $mount 方法进入模板解析阶段
+  
+  
