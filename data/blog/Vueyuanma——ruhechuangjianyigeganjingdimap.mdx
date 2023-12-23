@@ -1,0 +1,66 @@
+---
+  title: Vue源码——如何创建一个干净的map
+  date: 2023-12-23T12:31:21Z
+  summary:
+  tags: []
+---
+  
+  ## 前言
+最近在阅读学习 Vue 源码，里面值得学习的地方很多，需要细品，我在读了一阵子源码的时候，偶然注意到了 Vue 创建对象的方式（在之前阅读的时候被我选择性的忽略掉了o(╥﹏╥)o），为了弥补我的过错，现在大晚上我直接惩罚自己赶紧写个博客推敲推敲。
+## Object.create()
+`Object.create`方法接收两个参数：
+- proto:  新创建对象的原型对象。
+- propertiesObject（可选）:
+  如果该参数被指定且不为 undefined，则该传入对象的自有可枚举属性（即其自身定义的属性，而不是其原型链上的枚举属                  性）将为新创建的对象添加指定的属性值和对应的属性描述符。这些属性对应于 Object.defineProperties() 的第二个参数。
+
+
+包括但不限于 Vue，很多的框架或者库在创建一个空的对象时都使用了`Object.create(null)`,难道是最佳实践？
+首先，我们平时敲代码的时候创建一个对象一般之间将一个对象赋值：`let obj = {}`，那么这两种方式有什么区别呢，我们上代码：
+```
+let obj1 = Object.create(null);
+let obj2 = {};
+
+console.log(obj1);
+console.log(obj2);
+```
+我们用这两种方式分别创建两个对象：obj1，obj2。
+![](http://cdn.liuji.site/illustration/1076/2022-11-19_23-06-26.jpg)
+我们可以用一个图表示它们现在的关系
+![](http://cdn.liuji.site/illustration/1076/2022-11-20_00-09-30.jpg)
+不同的地方是 obj1 没有原型链的指向，是一个**干净**的对象。我们知道在创建一个对象的时候会自动的从原型链上继承属性和方法，但如果继承的一些无用的东西，多少会对性能造成一点的影响，例如`for in`遍历会把原型链上的属性都遍历一遍。而框架是很注重性能的，所以使用干净的对象
+
+我们看看 MDN 上的解释
+> 由于现代 JavaScript 引擎优化属性访问所带来的特性的关系，更改对象的 [[Prototype]] 在各个浏览器和 JavaScript 引擎上都是一个很慢的操作。其在更改继承的性能上的影响是微妙而又广泛的，这不仅仅限于 Object.setPrototypeOf(...) 语句上的时间花费，而且可能会延伸到**任何代码，那些可以访问任何** [[Prototype]] 已被更改的对象的代码。
+由于此特性是语言的一部分，因此引擎开发人员仍需要高效地（理想地）实现该特性。在引擎开发人员解决此问题之前，如果你担心性能问题，则应该避免设置对象的 [[Prototype]]。相反，你应该使用 Object.create() 来创建带有你想要的 [[Prototype]] 的新对象。
+
+## 手撸 Object.create()
+```
+Object.prototype.mycreate = function (proto, defineProperties) {
+  // proto 参数需为null 或者 除基本类型包装对象以外的对象
+  if (typeof proto !== "object" && typeof proto !== "function") {
+    throw new TypeError(
+      `Object prototype may only be an Object or null: ${proto}`
+    );
+  }
+
+  if (defineProperties === null) {
+    throw new TypeError("Cannot convert undefined or null to object");
+  }
+
+  let obj = {};
+  Object.setPrototypeOf(obj, proto);
+
+  // 添加属性描述符
+  if (defineProperties !== undefined) {
+    Object.defineProperties(obj, defineProperties);
+  }
+    return obj;
+  };
+
+  let newObj = Object.mycreate(null)
+```
+
+
+
+
+  

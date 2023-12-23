@@ -1,0 +1,250 @@
+---
+  title: Vue源码——模版编译（三）
+  date: 2023-12-23T12:32:15Z
+  summary:
+  tags: []
+---
+  
+  ## 前言
+在上篇文章中，我们介绍了`$mount`中通过一系列方式获取到`template`，调用 compileToFunctions 函数通过传入`template`和好多个参数，获取到了`rander`，接下来我们来分析一下内部的原理
+```
+const { render, staticRenderFns } = compileToFunctions(
+        template,
+        {
+          outputSourceRange: process.env.NODE_ENV !== "production",
+          shouldDecodeNewlines,
+          shouldDecodeNewlinesForHref,
+          delimiters: options.delimiters,
+          comments: options.comments,
+        },
+        this);
+```
+
+## 模板编译器
+上文使用的 compileToFunctions 函数是 createCompiler 的返回值，调用这个函数时传入了我们的配置 baseOptions，
+```
+@ src/platforms/web/compiler/index.js
+const { compile, compileToFunctions } = createCompiler(baseOptions);
+export { compile, compileToFunctions };
+```
+而 createCompiler 其实是 createCompilerCreator 的返回值
+```
+export const createCompiler = createCompilerCreator(function baseCompile(
+  template: string,
+  options: CompilerOptions
+): CompiledResult {
+  const ast = parse(template.trim(), options);
+  if (options.optimize !== false) {
+    optimize(ast, options);
+  }
+  const code = generate(ast, options);
+  return {
+    ast,
+    render: code.render,
+    staticRenderFns: code.staticRenderFns,
+  };
+});
+```
+调用 createCompilerCreator 传入了 baseCompile 函数，这个函数内部声明了一个`ast`常量接收`parse`函数返回值，多数同学应该听说过这个词，ast抽象树，巴拉巴拉。。。。。。。。。。。。。。。。。。。。
+
+我们传入的 baseCompile 函数在 createCompilerCreator 函数中其实就是担任了一个模板编译器的角色，我们看看这个函数时如何使用我们传入的编译器函数的：
+```
+export function createCompilerCreator(baseCompile: Function): Function {
+  return function createCompiler(baseOptions: CompilerOptions) { ... }
+```
+很明显的，甚至从名字都可以看出，createCompilerCreator 的作用就是创建一个 createCompiler，那么有人就会问了：不能直接创建 createCompiler 函数吗，为什么非要搞这么复杂。
+### 高阶函数
+这里的代码可以引出一个词叫做<u>高阶函数</u>
+- 什么是高阶函数？
+  接收一个或多个函数输入，并返回另一个函数的函数，即高阶函数。
+- 高阶函数有什么用？
+  1、通俗的讲：高阶函数可以让我们通过封装一个稍微有点复杂的函数来生成很多简单的函数，提高代码灵活度，降低耦合。
+  2、闭包：闭包也是高阶函数中的一个特征，使用闭包可以防止变量污染全局变量。
+此处通过`baseCompile`——编译函数，`baseOptions`——编译配置，组装成一个新增编译函数返回，如下：
+
+```
+function compile(
+      template: string,
+      options?: CompilerOptions
+    ): CompiledResult {
+     // 将 finalOptions 的 __proto__ 指向 baseOptions 的 prototype
+      const finalOptions = Object.create(baseOptions);
+
+      const errors = [];
+      const tips = [];
+
+      let warn = (msg, range, tip) => {
+        (tip ? tips : errors).push(msg);
+      };
+
+      if (options) {
+        if (
+          process.env.NODE_ENV !== "production" &&
+          options.outputSourceRange
+        ) {
+          // 匹配模板开头的空格记录长度
+          const leadingSpaceLength = template.match(/^\s*/)[0].length;
+
+          warn = (msg, range, tip) => {
+            const data: WarningMessage = { msg };
+            if (range) {
+              if (range.start != null) {
+                data.start = range.start + leadingSpaceLength;
+              }
+              if (range.end != null) {
+                data.end = range.end + leadingSpaceLength;
+              }
+            }
+            (tip ? tips : errors).push(data);
+          };
+        }
+        // merge custom modules
+        if (options.modules) {
+          finalOptions.modules = (baseOptions.modules || []).concat(
+            options.modules
+          );
+        }
+        // merge custom directives
+        if (options.directives) {
+          finalOptions.directives = extend(
+            Object.create(baseOptions.directives || null),
+            options.directives
+          );
+        }
+
+        // 拷贝其他的options
+        for (const key in options) {
+          if (key !== "modules" && key !== "directives") {
+            finalOptions[key] = options[key];
+          }
+        }
+      }
+
+      finalOptions.warn = warn;
+      // 调用传入的baseCompile对模板进行解析
+      const compiled = baseCompile(template.trim(), finalOptions);
+      if (process.env.NODE_ENV !== "production") {
+        detectErrors(compiled.ast, warn);
+      }
+      compiled.errors = errors;
+      compiled.tips = tips;
+      return compiled;
+    }
+
+    return {
+      compile,
+      compileToFunctions: createCompileToFunctionFn(compile),
+    };
+  };
+```
+
+随后，返回`compile`和我们之前使用的`compileToFunctions`，值得一提我们在返回的时候又调用了一个高阶函数`createCompileToFunctionFn`对此处的`compile`做包装，如下：
+```
+export function createCompileToFunctionFn(compile: Function): Function {
+  // 缓存对象
+  const cache = Object.create(null);
+  // 将compile处理成函数的函数
+  return function compileToFunctions(
+    template: string,
+    options?: CompilerOptions,
+    vm?: Component
+  ): CompiledFunctionResult {
+    // 首先将 options 拷贝一份到新的对象上
+    options = extend({}, options);
+    // 定义警告函数
+    const warn = options.warn || baseWarn;
+    delete options.warn;
+
+    // csp警告
+    if (process.env.NODE_ENV !== "production") {
+      // detect possible CSP restriction
+      try {
+        new Function("return 1");
+      } catch (e) {
+        if (e.toString().match(/unsafe-eval|CSP/)) {
+          warn(
+            "It seems you are using the standalone build of Vue.js in an " +
+              "environment with Content Security Policy that prohibits unsafe-eval. " +
+              "The template compiler cannot work in this environment. Consider " +
+              "relaxing the policy to allow unsafe-eval or pre-compiling your " +
+              "templates into render functions."
+          );
+        }
+      }
+    }
+
+    // 如果有自定义的delimiters(插值符号，默认为"{{}}")
+    // 将符号拼接到前面，没有就不拼接
+    const key = options.delimiters
+      ? String(options.delimiters) + template
+      : template;
+    // 进行缓存
+    if (cache[key]) {
+      return cache[key];
+    }
+
+    // 编译结果
+    const compiled = compile(template, options);
+
+    // 错误和提示处理
+    if (process.env.NODE_ENV !== "production") {
+      if (compiled.errors && compiled.errors.length) {
+        if (options.outputSourceRange) {
+          compiled.errors.forEach((e) => {
+            warn(
+              `Error compiling template:\n\n${e.msg}\n\n` +
+                generateCodeFrame(template, e.start, e.end),
+              vm
+            );
+          });
+        } else {
+          warn(
+            `Error compiling template:\n\n${template}\n\n` +
+              compiled.errors.map((e) => `- ${e}`).join("\n") +
+              "\n",
+            vm
+          );
+        }
+      }
+      if (compiled.tips && compiled.tips.length) {
+        if (options.outputSourceRange) {
+          compiled.tips.forEach((e) => tip(e.msg, vm));
+        } else {
+          compiled.tips.forEach((msg) => tip(msg, vm));
+        }
+      }
+    }
+```
+在上面我们已经获取到了`compile`函数的返回值，也就是编译结果：ast，render，staticRenderFns 在这里，我们进一步的对这些值做处理：
+```
+    // 转为函数
+    const res = {};
+    const fnGenErrors = [];
+    res.render = createFunction(compiled.render, fnGenErrors);
+    res.staticRenderFns = compiled.staticRenderFns.map((code) => {
+      return createFunction(code, fnGenErrors);
+    });
+
+    // check function generation errors.
+    // this should only happen if there is a bug in the compiler itself.
+    // mostly for codegen development use
+    /* istanbul ignore if */
+    if (process.env.NODE_ENV !== "production") {
+      if ((!compiled.errors || !compiled.errors.length) && fnGenErrors.length) {
+        warn(
+          `Failed to generate render function:\n\n` +
+            fnGenErrors
+              .map(({ err, code }) => `${err.toString()} in\n\n${code}\n`)
+              .join("\n"),
+          vm
+        );
+      }
+    }
+
+    return (cache[key] = res);
+  };
+}
+```
+rander表达式
+
+  
