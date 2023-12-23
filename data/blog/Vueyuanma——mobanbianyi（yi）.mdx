@@ -1,0 +1,436 @@
+---
+  title: Vue源码——模版编译（一）
+  date: 2023-12-23T12:26:37Z
+  summary:
+  tags: []
+---
+  
+  ## 前言
+在前文中我们介绍到 Vue 的初始化，在`vue._init`的尾声，Vue 根据用户是否传入供挂载的 DOM 元素来判断是否需要调用 `$mount`进入模板编译：
+```
+if (vm.$options.el) {
+      vm.$mount(vm.$options.el);
+}
+```
+我们知道`$mount`方法早在入口文件`src/platforms/web/entry-runtime-with-compiler`处就已经被挂载到了 Vue 的原型上：
+首先调用了一个函数<a href="/detail/1070" target="_black">cached</a>，这是`Vue`中封装的一个高阶函数，此函数的作用是对之前调用函数的结果做的缓存。传入的参数是一个函数，此函数通过传入的 id 获取到该 id 的`innerHTML`，该函数经过高阶函数<a href="/detail/1070" target="_black">cached</a>的包装后赋给了`idToTemplate `。
+```
+const idToTemplate = cached(id => {
+  const el = query(id)
+  return el && el.innerHTML
+})
+```
+接着在`Vue`原型上添加方法`$mount`并赋值给`mount`，我们可以看到，这个方法接收两个参数，第一个参数`el`是常用的，它接收一个字符串或者dom元素。
+```
+const mount = Vue.prototype.$mount
+Vue.prototype.$mount = function (
+  el?: string | Element,
+  hydrating?: boolean
+): Component {
+  el = el && query(el)
+...
+```
+为了兼容这两种参数，我们通过这个 query 函数来获取dom元素，当传入的是字符串(也就是"#app"这种)时，我们通过这个字符串获取到 dom 元素返回，将返回值重新赋值给 el，如果传入的是DOM元素，直接返回这个元素。
+```
+@ platforms/web/utils/index
+export function query (el: string | Element): Element {
+// 此处接收两种参数
+  if (typeof el === 'string') {
+  // 如果传入的的是一个 id，则通过 id 获取元素
+    const selected = document.querySelector(el)
+    if (!selected) {
+    // 如果为 undfined，则抛出错误
+      process.env.NODE_ENV !== 'production' && warn(
+        'Cannot find element: ' + el
+      )
+      return document.createElement('div')
+    }
+    // 返回获取到的元素
+    return selected
+  } else {
+    // 直接返回传入的元素
+    return el
+  }
+}
+```
+Vue 是不允许挂载到`body`或`html`标签上的，因为提供挂载的元素都会被 Vue 生成的 dom 替换，而根标签肯定是不能随便替换的，所以判断`el`抛出错误并直接返回 this。
+```
+...
+   // 挂载的元素不能是body或者html，否则抛出警告
+  if (el === document.body || el === document.documentElement) {
+    process.env.NODE_ENV !== 'production' && warn(
+      `Do not mount Vue to <html> or <body> - mount to normal elements instead.`
+    )
+    // 直接返回
+    return this
+  }
+```
+在我们获取到了`template`后，接下来就是将它给处理成
+```
+...
+  const options = this.$options
+  // 若用户直接传入的 rander 则跳过处理
+  if (!options.render) {
+    let template = options.template
+    if (template) {
+      if (typeof template === 'string') {
+        // 传入的是 #+id
+        if (template.charAt(0) === '#') {
+          // 这个函数我们上面已经做过分析，此处将元素的内容进行缓存并返回
+          template = idToTemplate(template)
+          // 在生产环境中，模板是必传的
+          if (process.env.NODE_ENV !== 'production' && !template) {
+            warn(
+              `Template element not found or is empty: ${options.template}`,
+              this
+            )
+          }
+        }
+      } else if (template.nodeType) {
+        
+        template = template.innerHTML
+      } else {
+        // 若不符合，直接返回
+        if (process.env.NODE_ENV !== 'production') {
+          warn('invalid template option:' + template, this)
+        }
+        return this
+      }
+    } else if (el) {
+      // 若没有传入 template 则获取 el 标签，此函数内部使用outerHTML属性获取内容 
+      template = getOuterHTML(el)
+    }
+    // 此处 template 一定在上文赋过值或抛出过错误
+    if (template) {
+      
+      if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
+        mark('compile')
+      }
+      // 调用函数
+      const { render, staticRenderFns } = compileToFunctions(template, {
+        outputSourceRange: process.env.NODE_ENV !== 'production',
+        shouldDecodeNewlines,
+        shouldDecodeNewlinesForHref,
+        delimiters: options.delimiters,
+        comments: options.comments
+      }, this)
+
+      options.render = render
+      options.staticRenderFns = staticRenderFns
+
+      if (process.env.NODE_ENV !== 'production' && config.performance && mark) {
+        mark('compile end')
+        measure(`vue ${this._name} compile`, 'compile', 'compile end')
+      }
+    }
+  }
+  // 返回此函数调用结果
+  return mount.call(this, el, hydrating)
+}
+```
+调用`compileToFunctions`函数，此处参数比较复杂我们先梳理梳理，第一个是我们刚才获取到的`template`，第二个参数是个对象，他包含着五个属性：
+- outputSourceRange：判断当前环境是否不为生产环境
+- shouldDecodeNewlines 和 shouldDecodeNewlinesForHref：
+- delimiters：插值符号
+
+第三个参数是我们的`vm`对象，在调用这个函数之后我们将其返回值`render`，`staticRenderFns `和添加到`vm.options`上，那么这两个值分别是什么东西呢？
+
+我们先看看`compileToFunctions`内部是如何做处理的，首先得找到这个函数，这块会比较绕，大家阅读时好好捋一下思路。
+compiler文件夹入口处，首先`compileToFunctions`是调用`createCompiler`的返回值，传入该函数的是一个外部导入的对象`baseOptions`
+```
+@ src/compiler/index.js
+
+import { baseOptions } from "./options";
+import { createCompiler } from "compiler/index";
+
+const { compile, compileToFunctions } = createCompiler(baseOptions);
+
+export { compile, compileToFunctions };
+```
+而我们调用过的`createCompiler`函数通过它的创建者`createCompilerCreator`创建，调用这个函数声明并传入了函数<a href="/detail/1075" target="_black">baseCompile</a>
+```
+@ src/compiler/index.js
+// 传入 parse 函数，这个函数的作用我们见下文分析
+export const createCompiler = createCompilerCreator(function baseCompile(
+  template: string,
+  options: CompilerOptions
+): CompiledResult {
+  const ast = parse(template.trim(), options);
+  if (options.optimize !== false) {
+    optimize(ast, options);
+  }
+  const code = generate(ast, options);
+  return {
+    ast,
+    render: code.render,
+    staticRenderFns: code.staticRenderFns,
+  };
+});
+```
+就是这里返回了 compiler 入口文件的两个函数
+```
+@ src/compiler/create-compiler.js
+
+export function createCompilerCreator (baseCompile: Function): Function {
+  return function createCompiler (baseOptions: CompilerOptions) {
+    // compile函数
+    function compile (
+      template: string,
+      options?: CompilerOptions
+    ): CompiledResult {
+      const finalOptions = Object.create(baseOptions)
+      const errors = []
+      const tips = []
+
+      let warn = (msg, range, tip) => {
+        (tip ? tips : errors).push(msg)
+      }
+
+      if (options) {
+        if (process.env.NODE_ENV !== 'production' && options.outputSourceRange) {
+          // $flow-disable-line
+          const leadingSpaceLength = template.match(/^\s*/)[0].length
+
+          warn = (msg, range, tip) => {
+            const data: WarningMessage = { msg }
+            if (range) {
+              if (range.start != null) {
+                data.start = range.start + leadingSpaceLength
+              }
+              if (range.end != null) {
+                data.end = range.end + leadingSpaceLength
+              }
+            }
+            (tip ? tips : errors).push(data)
+          }
+        }
+        // merge custom modules
+        if (options.modules) {
+          finalOptions.modules =
+            (baseOptions.modules || []).concat(options.modules)
+        }
+        // merge custom directives
+        if (options.directives) {
+          finalOptions.directives = extend(
+            Object.create(baseOptions.directives || null),
+            options.directives
+          )
+        }
+        // copy other options
+        for (const key in options) {
+          if (key !== 'modules' && key !== 'directives') {
+            finalOptions[key] = options[key]
+          }
+        }
+      }
+
+      finalOptions.warn = warn
+
+      const compiled = baseCompile(template.trim(), finalOptions)
+      if (process.env.NODE_ENV !== 'production') {
+        detectErrors(compiled.ast, warn)
+      }
+      compiled.errors = errors
+      compiled.tips = tips
+      return compiled
+    }
+
+    return {
+      compile,
+      compileToFunctions: createCompileToFunctionFn(compile)
+    }
+  }
+}
+```
+我们在`$mouted`中调用的就是这个函数的返回值即`compileToFunctions`函数（光贴代码了不会被骂吧，大家不要慌，这块虽然有点绕，捋清楚还是不难懂的），值得一提的是，此处形成了一个闭包，缓存着对象`cache`，
+```
+export function createCompileToFunctionFn(compile: Function): Function {
+  const cache = Object.create(null);
+
+  return function compileToFunctions(
+    template: string,
+    options?: CompilerOptions,
+    vm?: Component
+  ): CompiledFunctionResult {
+    // 浅拷贝 options
+    options = extend({}, options);
+    // debug
+    const warn = options.warn || baseWarn;
+    delete options.warn;
+
+    if (process.env.NODE_ENV !== "production") {
+      // detect possible CSP restriction
+      try {
+        new Function("return 1");
+      } catch (e) {
+        if (e.toString().match(/unsafe-eval|CSP/)) {
+          warn(
+            "It seems you are using the standalone build of Vue.js in an " +
+              "environment with Content Security Policy that prohibits unsafe-eval. " +
+              "The template compiler cannot work in this environment. Consider " +
+              "relaxing the policy to allow unsafe-eval or pre-compiling your " +
+              "templates into render functions."
+          );
+        }
+      }
+    }
+
+    // 如果用户传入delimiters（自定义的插值符号），则转化为字符串并拼接到template前，赋值给key，如果为空，则直接赋值template
+    const key = options.delimiters
+      ? String(options.delimiters) + template
+      : template;
+    // 利用闭包缓存key
+    if (cache[key]) {
+      return cache[key];
+    }
+    
+    // 编译模板
+    const compiled = compile(template, options);
+-------------------------------------------------
+  // 为了方便阅读，我将上文中的 compile 贴下来，并不是这块声明的，大家注意一下
+ function compile (
+      template: string,
+      options?: CompilerOptions
+    ): CompiledResult {
+      // 创建一个空的对象 finalOptions 继承 baseOptions 的属性和方法
+      const finalOptions = Object.create(baseOptions)
+      
+      const errors = []
+      const tips = []
+
+      let warn = (msg, range, tip) => {
+        (tip ? tips : errors).push(msg)
+      }
+
+      if (options) {
+        // 生产环境和开发环境抛出错误和提示进行区分
+        if (process.env.NODE_ENV !== 'production' && options.outputSourceRange) {
+          const leadingSpaceLength = template.match(/^\s*/)[0].length
+
+          warn = (msg, range, tip) => {
+            const data: WarningMessage = { msg }
+            if (range) {
+              if (range.start != null) {
+                data.start = range.start + leadingSpaceLength
+              }
+              if (range.end != null) {
+                data.end = range.end + leadingSpaceLength
+              }
+            }
+            (tip ? tips : errors).push(data)
+          }
+        }
+        // 合并自定义的 module
+        if (options.modules) {
+          finalOptions.modules =
+            (baseOptions.modules || []).concat(options.modules)
+        }
+        // 合并自定义的 directives
+        if (options.directives) {
+          finalOptions.directives = extend(
+            Object.create(baseOptions.directives || null),
+            options.directives
+          )
+        }
+        // copy other options
+        for (const key in options) {
+          if (key !== 'modules' && key !== 'directives') {
+            finalOptions[key] = options[key]
+          }
+        }
+      }
+
+      finalOptions.warn = warn
+      
+      
+      const compiled = baseCompile(template.trim(), finalOptions)
+      ===============================================================
+        // 别被绕晕大家，(〒︿〒)我为了方便看还是把代码直接贴进来，这段实际上不存在于源码中的
+        // 这个是调用 createCompilerCreator 传入的函数
+       function baseCompile(
+            template: string,
+            options: CompilerOptions
+          ): CompiledResult {
+            const ast = parse(template.trim(), options);
+            if (options.optimize !== false) {
+                optimize(ast, options);
+              }
+            const code = generate(ast, options);
+            return {
+                    ast,
+                    render: code.render,
+        staticRenderFns: code.staticRenderFns}
+                  }
+      
+      ===============================================================
+      if (process.env.NODE_ENV !== 'production') {
+        detectErrors(compiled.ast, warn)
+      }
+      compiled.errors = errors
+      compiled.tips = tips
+      return compiled
+    }
+
+-------------------------------------------------
+
+    // check compilation errors/tips
+    if (process.env.NODE_ENV !== "production") {
+      if (compiled.errors && compiled.errors.length) {
+        if (options.outputSourceRange) {
+          compiled.errors.forEach((e) => {
+            warn(
+              `Error compiling template:\n\n${e.msg}\n\n` +
+                generateCodeFrame(template, e.start, e.end),
+              vm
+            );
+          });
+        } else {
+          warn(
+            `Error compiling template:\n\n${template}\n\n` +
+              compiled.errors.map((e) => `- ${e}`).join("\n") +
+              "\n",
+            vm
+          );
+        }
+      }
+      if (compiled.tips && compiled.tips.length) {
+        if (options.outputSourceRange) {
+          compiled.tips.forEach((e) => tip(e.msg, vm));
+        } else {
+          compiled.tips.forEach((msg) => tip(msg, vm));
+        }
+      }
+    }
+
+    // turn code into functions
+    const res = {};
+    const fnGenErrors = [];
+    res.render = createFunction(compiled.render, fnGenErrors);
+    res.staticRenderFns = compiled.staticRenderFns.map((code) => {
+      return createFunction(code, fnGenErrors);
+    });
+
+    // check function generation errors.
+    // this should only happen if there is a bug in the compiler itself.
+    // mostly for codegen development use
+    /* istanbul ignore if */
+    if (process.env.NODE_ENV !== "production") {
+      if ((!compiled.errors || !compiled.errors.length) && fnGenErrors.length) {
+        warn(
+          `Failed to generate render function:\n\n` +
+            fnGenErrors
+              .map(({ err, code }) => `${err.toString()} in\n\n${code}\n`)
+              .join("\n"),
+          vm
+        );
+      }
+    }
+
+    return (cache[key] = res);
+  };
+}
+
+```
+
+
+  
