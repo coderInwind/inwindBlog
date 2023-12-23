@@ -1,0 +1,955 @@
+---
+  title: Vue源码——模版编译（五）
+  date: 2023-12-23T12:33:10Z
+  summary:
+  tags: []
+---
+  
+  ## 前言
+在上篇文章里我们将模板解析的整个流程大概的梳理了一遍，我们知道了标签是如何转化为 ast 对象的。在这篇文章中我们来聊聊指令及属性的解析。
+
+## 指令的解析流程
+回顾一下上文中我们在 startTag 的匹配中通过正则对属性进行了匹配，接着调用了 start 钩子函数将整理后的attrs传入。在钩子函数中，构造了一个 ast 对象:
+```
+let element = createASTElement(tag, attrs, currentParent);
+function createASTElement(tag,attrs,paren) {
+  return {
+    // 标签类型
+    type: 1,
+    // 标签名
+    tag,
+    // 属性
+    attrsList: attrs,
+    // 以 map 的形式存储属性，name:value
+    attrsMap: makeAttrsMap(attrs),
+    // 以 键值对形式存储属性 name:{属性对象}
+    rawAttrsMap: {},
+    // 父节点
+    parent,
+    // 子节点
+    children: [],
+  };
+}
+```
+在其中除了添加了我们解析到的 `attrList` 还以此用不同的形式做了存放：
+```
+ if (process.env.NODE_ENV !== "production") {
+        if (options.outputSourceRange) {
+          element.start = start;
+          element.end = end;
+          // 将attr数组处理保存为一个对象
+          element.rawAttrsMap = element.attrsList.reduce((cumulated, attr) => {
+            cumulated[attr.name] = attr;
+            return cumulated;
+          }, {});
+        }
+        // 匹配属性中非法字符
+        attrs.forEach((attr) => {
+          if (invalidAttributeRE.test(attr.name)) {
+            warn(
+              `Invalid dynamic argument expression: attribute names cannot contain ` +
+                `spaces, quotes, <, >, / or =.`,
+              {
+                start: attr.start + attr.name.indexOf(`[`),
+                end: attr.start + attr.name.length,
+              }
+            );
+          }
+        });
+      }
+```
+接着，我们再来了解一下 getAndRemoveAttr 函数，这是操作属性使用到的核心函数之一。
+一般情况下，我们在解析过属性后会直接将其从 attrsList 中移除，但不会从 attrsMap 中移除，除非传入了第三个参数
+```
+export function getAndRemoveAttr (
+  el: ASTElement,
+  name: string,
+  removeFromMap?: boolean
+): ?string {
+  let val
+  if ((val = el.attrsMap[name]) != null) {
+    // 指令的值为空（也就是等于后面是 空值 或者 没有）
+    const list = el.attrsList
+    for (let i = 0, l = list.length; i < l; i++) {
+      if (list[i].name === name) {
+        list.splice(i, 1)
+        break
+      }
+    }
+    // 从attrsList中移除属性
+  }
+  // 如果第三个参数removeFromMap为true，
+  // 则从attrsMap中也移除
+  if (removeFromMap) {
+    delete el.attrsMap[name]
+  }
+  return val
+}
+```
+### v-pre
+回到我们 start钩子中，首先判断了 inVPre，这个字段记录着标签内是否是 v-pre 状态，调用 getAndRemoveAttr 将该属性移除并返回，v-pre 的值是一个空字符串，不为null，即将当前节点的 pre 赋值为 true。
+```
+if (!inVPre) {
+  processPre(element);
+  // 如果当前节点的 有 v-pre
+  if (element.pre) {
+    // inVPre表示处于pre作用域里
+    inVPre = true;
+  }
+}
+
+function processPre(el) {
+  if (getAndRemoveAttr(el, "v-pre") != null) {
+    el.pre = true;
+  }
+}
+```
+判断是否处于 v-pre 作用域内，如果是，vue 不会以常规的方式解析指令
+```
+if (inVPre) {
+  processRawAttrs(element);
+} else if (!element.processed) {
+  // structural directives
+  processFor(element);
+  processIf(element);
+  processOnce(element);
+}
+```
+解析 v-pre 内指令，将 attrsList 浅拷贝到 attrs 中，将 value 处理成 json 字符串
+```
+function processRawAttrs(el) {
+  const list = el.attrsList;
+  const len = list.length;
+  if (len) {
+    // 添加一个固定长度的数组属性 attrs
+    const attrs: Array<ASTAttr> = (el.attrs = new Array(len));
+    // 往其中添加对象，和原来不同的是，添加的 value 被转化成 json 字符串
+    for (let i = 0; i < len; i++) {
+      attrs[i] = {
+        name: list[i].name,
+        value: JSON.stringify(list[i].value),
+      };
+      if (list[i].start != null) {
+        attrs[i].start = list[i].start;
+        attrs[i].end = list[i].end;
+      }
+    }
+  } else if (!el.pre) {
+    // v-pre 作用域内没有指令
+    el.plain = true;
+  }
+}
+```
+如果不在v-pre内，正常解析指令：
+### v-for
+```
+export function processFor(el: ASTElement) {
+  let exp;
+  // 移除，获取，赋值，判断
+  if ((exp = getAndRemoveAttr(el, "v-for"))) {
+    // 解析            
+    const res = parseFor(exp);
+    if (res) {
+      // 将解出的属性加入抽象树
+      extend(el, res);
+    } else if (process.env.NODE_ENV !== "production") {
+      warn(`Invalid v-for expression: ${exp}`, el.rawAttrsMap["v-for"]);
+    }
+  }
+}
+```
+parseFor 是通过正则匹配的方式对 v-for 的值进行了解析，获得了一个包含使用到元素的对象
+```
+export function parseFor(exp: string): ?ForParseResult {
+  const inMatch = exp.match(forAliasRE);
+  if (!inMatch) return;
+  const res = {};
+  // 迭代的数组 || 对象
+  res.for = inMatch[2].trim();
+  // 当前的循环迭代到的值
+  const alias = inMatch[1].trim().replace(stripParensRE, "");
+  // 迭代的下标
+  const iteratorMatch = alias.match(forIteratorRE);
+  // 如果迭代的对象是一个对象
+  // 那么iterator1为对象当前迭代值的key
+  // 那么iterator2为当前的下标
+  if (iteratorMatch) {
+    res.alias = alias.replace(forIteratorRE, "").trim();
+    res.iterator1 = iteratorMatch[1].trim();
+    if (iteratorMatch[2]) {
+      res.iterator2 = iteratorMatch[2].trim();
+    }
+  } else {
+    res.alias = alias;
+  }
+  return res;
+}
+```          
+### v-if
+```
+function processIf(el) {
+  const exp = getAndRemoveAttr(el, "v-if");
+  if (exp) {
+    el.if = exp;
+    // 将 v-if 的值和当前抽象树对象组成的数组添加到当前抽象树对象的 ifConditions 属性中
+    addIfCondition(el, {
+      exp: exp,
+      block: el,
+    });
+  } else {
+    // 匹配 v-else，添加属性
+    if (getAndRemoveAttr(el, "v-else") != null) {
+      el.else = true;
+    }
+    const elseif = getAndRemoveAttr(el, "v-else-if");
+    // 匹配 v-else-if，添加属性
+    if (elseif) {
+      el.elseif = elseif;
+    }
+  }
+}
+```
+
+### v-once
+v-once解析 比前几种指令都要来的简单，如果存在就将 once 属性赋值为 true
+```
+function processOnce(el) {
+  const once = getAndRemoveAttr(el, "v-once");
+  if (once != null) {
+    el.once = true;
+  }
+}
+```
+
+### 对于 root 标签的限制
+我们继续往下看，此处对根标签做了限制，初始情况下，我们只声明了 root，所以其值为 undfined，这时我们解析到了第一个标签，那么这个标签就是根标签：
+```
+if (!root) {
+  root = element;
+  if (process.env.NODE_ENV !== "production") {
+    checkRootConstraints(root);
+  }
+}
+
+function checkRootConstraints(el) {
+  if (el.tag === "slot" || el.tag === "template") {
+    warnOnce(
+      `Cannot use <${el.tag}> as component root element because it may ` +
+        "contain multiple nodes.",
+      { start: el.start }
+    );
+  }
+  if (el.attrsMap.hasOwnProperty("v-for")) {
+    warnOnce(
+      "Cannot use v-for on stateful component root element because " +
+        "it renders multiple elements.",
+      el.rawAttrsMap["v-for"]
+    );
+  }
+}
+```
+在有多个根标签或者根标签上存在 `v-for` 指令时抛出警告。
+
+## closeElement
+在前面做完一系列的处理之后，我们对标签的解析进入了尾声，调用 closeElement，在这个函数里面会对前面没有处理的部分指令进行解析，将指令上的修饰符解析成用于渲染的字符串，以及一些边缘化判断，光说是说不明白的，让我们来看看代码：
+```
+// 在 start 钩子中解析到自闭合标签
+if (!unary) {
+  currentParent = element;
+  stack.push(element);
+} else {
+  closeElement(element);
+}
+```
+在 end 钩子中
+```
+end(tag, start, end) {
+  const element = stack[stack.length - 1];
+  // pop stack
+  stack.length -= 1;
+  currentParent = stack[stack.length - 1];
+  if (process.env.NODE_ENV !== "production" && options.outputSourceRange) {
+    element.end = end;
+  }
+  closeElement(element);
+},
+```
+同样的，处理完其他的操作后调用了 closeElement 函数进入关闭标签阶段，那么接下来正戏来了，我们逐行分析
+对非处于pre标签中节点尾随的空格进行删除
+```
+function trimEndingWhitespace(el) {
+  if (!inPre) {
+    let lastNode;
+    while (
+      (lastNode = el.children[el.children.length - 1]) &&
+      lastNode.type === 3 &&
+      lastNode.text === " "
+    ) {
+      el.children.pop();
+    }
+  }
+}
+```
+排除已经解析过的标签和在 v-pre 指令作用范围内的标签，紧接着对标签的属性进行解析以及增加规则限制：
+```
+if (!inVPre && !element.processed) {
+   element = processElement(element, options);
+}
+
+```
+我们看看内部对哪些属性做了解析：
+```
+export function processElement(element: ASTElement, options: CompilerOptions) {
+  processKey(element);
+
+  element.plain =
+    !element.key && !element.scopedSlots && !element.attrsList.length;
+
+  processRef(element);
+  processSlotContent(element);
+  processSlotOutlet(element);
+  processComponent(element);
+  for (let i = 0; i < transforms.length; i++) {
+    element = transforms[i](element, options) || element;
+  }
+  processAttrs(element);
+  return element;
+}
+```
+我们接下来一一展开分析：
+### processKey
+解析 key 属性，很简单，没什么好说的，看代码：
+```
+function processKey(el) {
+  // 处理属性，并获取
+  const exp = getBindingAttr(el, "key");
+  if (exp) {
+    if (process.env.NODE_ENV !== "production") {
+  // 不能在 template 上绑定 key
+      if (el.tag === "template") {
+        warn(
+          `<template> cannot be keyed. Place the key on real elements instead.`,
+          getRawBindingAttr(el, "key")
+        );
+      }
+      if (el.for) {
+      // 获取到 v-for 的 index
+        const iterator = el.iterator2 || el.iterator1;
+        const parent = el.parent;
+        // 如果用户在内置组件 transition-group 中列表渲染，
+        // 并使用 index 作为 key，抛出错误
+        if (
+          iterator &&
+          iterator === exp &&
+          parent &&
+          parent.tag === "transition-group"
+        ) {
+          warn(
+            `Do not use v-for index as key on <transition-group> children, ` +
+              `this is the same as not using keys.`,
+            getRawBindingAttr(el, "key"),
+            true /* tip */
+          );
+        }
+      }
+    }
+    // 添加到 ast 树对象
+    el.key = exp;
+  }
+}
+```
+plain 记录在该元素上没有任何属性和指令，并且不是作用域插槽
+```
+element.plain =
+    !element.key && !element.scopedSlots && !element.attrsList.length;
+```
+
+### ref
+```
+function processRef(el) {
+  // 处理获取属性
+  const ref = getBindingAttr(el, "ref");
+  if (ref) {
+    el.ref = ref;
+    el.refInFor = checkInFor(el);
+  }
+}
+```
+
+### slot-scope
+这一块代码较长，我们一部分一部分的来分析：
+首先是对作用域插槽的解析，在 vue @2.6 版本之后，vue建议将作用域插槽的 attributes 名 scope 替换为 slot-scope，使用 scope 会抛出警告，但仍可以正常运行
+```
+function processSlotContent(el) {
+  let slotScope;
+  if (el.tag === "template") {
+    slotScope = getAndRemoveAttr(el, "scope");
+    /* istanbul ignore if */
+    if (process.env.NODE_ENV !== "production" && slotScope) {
+      warn(
+        `the "scope" attribute for scoped slots have been deprecated and ` +
+          `replaced by "slot-scope" since 2.5. The new "slot-scope" attribute ` +
+          `can also be used on plain elements in addition to <template> to ` +
+          `denote scoped slots.`,
+        el.rawAttrsMap["scope"],
+        true
+      );
+    }
+    // 加入到 ast树对象
+    el.slotScope = slotScope || getAndRemoveAttr(el, "slot-scope");
+  } 
+```
+新的 slot-scope 属性可以在任意标签上生效，但 vue 不建议其与 v-for 处于同一标签中，你可以使用 template 包装 v-for，把 slot-scope 放在 template 上。
+```
+else if ((slotScope = getAndRemoveAttr(el, "slot-scope"))) {
+    /* istanbul ignore if */
+    if (process.env.NODE_ENV !== "production" && el.attrsMap["v-for"]) {
+      warn(
+        `Ambiguous combined usage of slot-scope and v-for on <${el.tag}> ` +
+          `(v-for takes higher priority). Use a wrapper <template> for the ` +
+          `scoped slot to make it clearer.`,
+        el.rawAttrsMap["slot-scope"],
+        true
+      );
+    }
+    // 加入到 ast树对象
+    el.slotScope = slotScope;
+  }
+```
+### slot
+具名插槽的解析，值得注意的是如果是 v-bind 绑定的动态插槽名，会被。。。。。
+```
+  // slot="xxx"
+  const slotTarget = getBindingAttr(el, "slot");
+  if (slotTarget) {
+    // 添加到 ast 抽象树对象，如果 slot = ""，那么他会被视为一个普通插槽
+    el.slotTarget = slotTarget === '""' ? '"default"' : slotTarget;
+    // v-bing 绑定的一个动态插槽名，
+    // 从解析 v-bing 的 map 中取值并存储
+    el.slotTargetDynamic = !!(
+      el.attrsMap[":slot"] || el.attrsMap["v-bind:slot"]
+    );
+    // 这里后面再看
+    if (el.tag !== "template" && !el.slotScope) {
+      addAttr(el, "slot", slotTarget, getRawBindingAttr(el, "slot"));
+    }
+  }
+```
+vue @2.6的新语法 v-slot 语法糖是 #，使用方式这儿就不多说了，这个语法只适用于 template 标签或组件上，
+```
+  // 2.6 v-slot 语法
+  if (process.env.NEW_SLOT_SYNTAX) {
+    if (el.tag === "template") {
+      // v-slot on <template>
+      // 通过正则获取到属性，并在attrlist上移除
+      const slotBinding = getAndRemoveAttrByRegex(el, slotRE);
+      if (slotBinding) {
+        if (process.env.NODE_ENV !== "production") {
+           // 通过判断 ast 属性，限制 v-slot 不能与 slot 或 slot-scope 混用，
+           // v-slot 已经具备有他们的功能了，应该没有笨蛋会这么用，如果有则抛出错误
+          if (el.slotTarget || el.slotScope) {
+            warn(`Unexpected mixed usage of different slot syntaxes.`, el);
+          }
+          // 判断父元素是否是组件，限制 template 只能处在组件的根标签处
+          if (el.parent && !maybeComponent(el.parent)) {
+            warn(
+              `<template v-slot> can only appear at the root level inside ` +
+                `the receiving component`,
+              el
+            );
+          }
+        }
+        // 调用 getSlotName 解析匹配到的 v-slot
+        // 我就不贴上来了：函数中进行了容错判断
+        // 在 v-slot 的值为空字符串时，会将其视为普通插槽
+        // 但如果使用语法糖 # 不会进行容错，抛出错误
+        // 返回 {指令值：string，是否为动态属性：boolean }
+        const { name, dynamic } = getSlotName(slotBinding);
+        el.slotTarget = name;
+        el.slotTargetDynamic = dynamic;
+        // 具名作用域插槽，如果值为空，则保存一个 _empty_ 字符串标识
+        el.slotScope = slotBinding.value || emptySlotScopeToken; // force it into a scoped slot for perf
+      }
+    } 
+```  
+如果 v-slot 在一个组件上，视其为默认插槽
+```
+    else {
+      // 获取 v-slot 指令信息，同上
+      const slotBinding = getAndRemoveAttrByRegex(el, slotRE);
+      if (slotBinding) {
+        if (process.env.NODE_ENV !== "production") {
+          // 如果 v-slot 在既不是组件，也不是 template 的标签上（上文以排除），抛错
+          if (!maybeComponent(el)) {
+            warn(
+              `v-slot can only be used on components or <template>.`,
+              slotBinding
+            );
+          }
+          // 不允许在组件上混用 v-slot 和 slot、slot-scope
+          //（正常情况下应该不会有这种操作，因为后两种在组件上不会生效）
+          if (el.slotScope || el.slotTarget) {
+            warn(`Unexpected mixed usage of different slot syntaxes.`, el);
+          }
+          // 在这个组件中还存在作用域插槽，会
+
+          if (el.scopedSlots) {
+            warn(
+              `To avoid scope ambiguity, the default slot should also use ` +
+                `<template> syntax when there are other named slots.`,
+              slotBinding
+            );
+          }
+        }
+        // 里面的 child 都有共同的作用域
+        const slots = el.scopedSlots || (el.scopedSlots = {});
+        // 拿到插槽的相关信息（上文提过，不多赘述）
+        const { name, dynamic } = getSlotName(slotBinding);
+        // 在 el scopedSlots 创建添加 ast 抽象树对象
+        const slotContainer = (slots[name] = createASTElement(
+          "template",
+          [],
+          el
+        ));
+        // 保存信息到新创建的 ast 对象中
+        slotContainer.slotTarget = name;
+        slotContainer.slotTargetDynamic = dynamic;
+        // 变量所有的子标签，创建的对象赋值给子元素parent（已经有作用域对象的子元素除外）
+        slotContainer.children = el.children.filter((c: any) => {
+          if (!c.slotScope) {
+            c.parent = slotContainer;
+            return true;
+          }
+        });
+        // 保存作用域（props）名
+        slotContainer.slotScope = slotBinding.value || emptySlotScopeToken;
+        // 移除所有的子元素（防止在渲染流程中它们会被渲染到插槽处）
+        el.children = [];
+        // mark el non-plain so data gets generated
+        el.plain = false;
+      }
+    }
+  }
+}
+```
+#### is
+vue 中的组件也可以是原始HTML的形式，以 is 属性扩展
+```
+function processComponent(el) {
+  let binding;
+  if ((binding = getBindingAttr(el, "is"))) {
+    el.component = binding;
+  }
+  if (getAndRemoveAttr(el, "inline-template") != null) {
+    el.inlineTemplate = true;
+  }
+}
+```
+### 解析相关指令
+对 attrsList 中的属性做进一步处理，我们知道在上文中，一些指令被解析完会直接从 attrsList 中移除，但 v-bind、v-model、v-on 不会被移除，因为这里需要对其有用到的修饰符进行处理。
+```
+function processAttrs(el) {
+  const list = el.attrsList;
+  let i, l, name, rawName, value, modifiers, syncGen, isDynamic;
+  // 逐个解析 attrsList 中的属性
+  for (i = 0, l = list.length; i < l; i++) {
+    name = rawName = list[i].name;
+    value = list[i].value;
+    // 是否使用了相关指令（/^v-|^@|^:|^#/）
+    if (dirRE.test(name)) {
+      // 添加动态绑定的标记
+      el.hasBindings = true;
+      // 解析属性上的修饰符 返回{修饰符名：true} 的对象
+      modifiers = parseModifiers(name.replace(dirRE, ""));
+      // 是否支持语法糖 .prop（process.env.VBIND_PROP_SHORTHAND默认是否，不支持）
+      if (process.env.VBIND_PROP_SHORTHAND && propBindRE.test(name)) {
+        (modifiers || (modifiers = {})).prop = true;
+        name = `.` + name.slice(1).replace(modifierRE, "");
+      } else if (modifiers) {
+        // 正则匹配去除修饰符
+        name = name.replace(modifierRE, "");
+      }
+      // 解析 v-bind
+      if (bindRE.test(name)) {
+        // v-bind
+        // 获得一个干净的 name
+        name = name.replace(bindRE, "");
+        // 对 v-bind 进行过滤，目的是让一些表达式不会被误以为是字符串被处理
+        value = parseFilters(value);
+        
+        isDynamic = dynamicArgRE.test(name);
+        // 若 v-bind 使用动态属性名
+        if (isDynamic) {
+          // 获得一个干净的 name
+          name = name.slice(1, -1);
+        }
+        // 对于 v-bind value为空的情况，抛出警告
+        if (
+          process.env.NODE_ENV !== "production" &&
+          value.trim().length === 0
+        ) {
+          warn(
+            `The value for a v-bind expression cannot be empty. Found in "v-bind:${name}"`
+          );
+        }
+```
+#### prop和camel修饰符
+```
+        // 解析用到的修饰符
+        if (modifiers) {
+          // 使用 prop 修饰符，并为非动态的属性
+          if (modifiers.prop && !isDynamic) {
+            // 调用 camelize 函数 hello-world 这种转化为驼峰形式
+            // 内部用了 replace 进行正则匹配替换，值得一提的是，
+            // 里面出现了熟悉的 cached 函数，他将转化后的name进行了缓存
+            name = camelize(name);
+            // 特殊处理
+            if (name === "innerHtml") name = "innerHTML";
+          }
+          // 使用 camel 修饰符，非动态属性名
+          if (modifiers.camel && !isDynamic) {
+            // 转为驼峰
+            name = camelize(name);
+          }
+```
+#### sync修饰符
+此处需要着重提一下，在使用 Vue 的时候我们经常会使用到 `.sync` 修饰符实现父子组件的双向绑定：我们知道，vue2 是单向数据流，在不使用 `.sync` 修饰符的情况下，修改父组件的值只能通过子组件传递自定义事件 -> 父组件触发修改值，使用此修饰符后，在 `emit` 时 `$emit("update:value",newValue)`，父组件的 value 值就会发送改变
+```
+          // 使用 .async 修饰符
+          if (modifiers.sync) {
+            // 获取字符串编码
+            syncGen = genAssignmentCode(value, `$event`);
+``` 
+调用 genAssignmentCode 生成以供 render 函数渲染的编码：
+```
+export function genAssignmentCode (
+  value: string,
+  assignment: string
+): string {
+  // 该值是否为对象获取的属性或者数组获取的元素
+  const res = parseModel(value)
+  // 返回res: { exp: （对象 || 数组）名, key: 属性 || 下标 }
+  // 依据 key 值返回不同的字符串
+  if (res.key === null) {
+    return `${value}=${assignment}`
+  } else {
+    return `$set(${res.exp}, ${res.key}, ${assignment})`
+  }
+}
+```
+有一函数 addHandler，这个函数的作用是在el上添加事件对象，此处在内部帮我们完成了父子绑定的操作：
+```
+            if (!isDynamic) {
+              addHandler(
+                el,
+                `update:${camelize(name)}`,
+                syncGen,
+                null,
+                false,
+                warn,
+                list[i]
+              );
+              if (hyphenate(name) !== camelize(name)) {
+                addHandler(
+                  el,
+                  `update:${hyphenate(name)}`,
+                  syncGen,
+                  null,
+                  false,
+                  warn,
+                  list[i]
+                );
+              }
+            } else {
+              // handler w/ dynamic event name
+              addHandler(
+                el,
+                `"update:"+(${name})`,
+                syncGen,
+                null,
+                false,
+                warn,
+                list[i],
+                true // dynamic
+              );
+            }
+          }
+        }
+```
+#### 其他修饰符和
+在这个函数的作用是继续对修饰符进行进行处理，并加工成供渲染阶段使用的特殊的字符串，
+```
+export function addHandler (
+  el: ASTElement,
+  name: string,
+  value: string,
+  modifiers: ?ASTModifiers,
+  important?: boolean,
+  warn?: ?Function,
+  range?: Range,
+  dynamic?: boolean
+) {
+
+  modifiers = modifiers || emptyObject
+  // prevent：阻止默认事件
+  // passive：不阻止默认事件
+  // 他们的作用是相反的，所以同时在一个地方使用会抛出警告
+  if (
+    process.env.NODE_ENV !== 'production' && warn &&
+    modifiers.prevent && modifiers.passive
+  ) {
+    warn(
+      'passive and prevent can\'t be used together. ' +
+      'Passive handler can\'t prevent default event.',
+      range
+    )
+  }
+  // .right 和 .middle 修饰符的处理
+  // 只应用在点击事件上，并且同时使用只会解析 .right
+  if (modifiers.right) {
+    if (dynamic) {
+      name = `(${name})==='click'?'contextmenu':(${name})`
+    } else if (name === 'click') {
+      name = 'contextmenu'
+      delete modifiers.right
+    }
+  } else if (modifiers.middle) {
+    if (dynamic) {
+      name = `(${name})==='click'?'mouseup':(${name})`
+    } else if (name === 'click') {
+      name = 'mouseup'
+    }
+  }
+
+  // 事件捕获
+  if (modifiers.capture) {
+    delete modifiers.capture
+    name = prependModifierMarker('!', name, dynamic)
+  }
+  // 事件只会触发一次，后面会被移除
+  if (modifiers.once) {
+    delete modifiers.once
+    name = prependModifierMarker('~', name, dynamic)
+  }
+  // 不阻止默认事件
+  if (modifiers.passive) {
+    delete modifiers.passive
+    name = prependModifierMarker('&', name, dynamic)
+  }
+
+  let events
+  // 使用原生Dom事件
+  // 创建事件对象
+  if (modifiers.native) {
+    delete modifiers.native
+    events = el.nativeEvents || (el.nativeEvents = {})
+  } else {
+    events = el.events || (el.events = {})
+  }
+  // 声明组织一个以 start和end坐标，
+  // genAssignmentCode生成的字符串
+  // 和记录是否是动态属性 dynamic 的对象
+  const newHandler: any = rangeSetItem({ value: value.trim(), dynamic }, range)
+  if (modifiers !== emptyObject) {
+    newHandler.modifiers = modifiers
+  }
+  
+  const handlers = events[name]
+  /* istanbul ignore if */
+  if (Array.isArray(handlers)) {
+    important ? handlers.unshift(newHandler) : handlers.push(newHandler)
+  } else if (handlers) {
+    events[name] = important ? [newHandler, handlers] : [handlers, newHandler]
+  } else {
+    events[name] = newHandler
+  }
+
+  el.plain = false
+}
+```
+继续往下走，在处理完 `sync` 修饰符后，解析 `v-on` 监听的事件：
+```
+  // 此处判断了动态绑定的属性是
+  // 是作为 prop 传递
+  // 还是作为html元素的属性绑定
+  // 判断条件是 有prop修饰符 || 
+        if (
+          (modifiers && modifiers.prop) ||
+          (!el.component && platformMustUseProp(el.tag, el.attrsMap.type, name))
+        ) {
+          addProp(el, name, value, list[i], isDynamic);
+        } else {
+          addAttr(el, name, value, list[i], isDynamic);
+        }
+// 解析 v-on
+    } else if (onRE.test(name)) {
+        // 移除掉指令符号
+        name = name.replace(onRE, "");
+        // 是否是动态变量名
+        isDynamic = dynamicArgRE.test(name);
+        // 如果是，去除中括号
+        if (isDynamic) {
+          name = name.slice(1, -1);
+        }
+        // 添加信息到events对象
+        addHandler(el, name, value, modifiers, false, warn, list[i], isDynamic);
+      } else {
+        // 处v-on和v-bing外别的指令，
+        name = name.replace(dirRE, "");
+        // parse arg
+        // 匹配指令，获取到指令名
+        const argMatch = name.match(argRE);
+        let arg = argMatch && argMatch[1];
+        isDynamic = false;
+        if (arg) {
+          // 重新赋上了去除掉参数的指令的名字
+          name = name.slice(0, -(arg.length + 1));
+          // 判断是否为路径值
+          if (dynamicArgRE.test(arg)) {
+            arg = arg.slice(1, -1);
+            // 添加标识
+            isDynamic = true;
+          }
+        }
+        // 将相关信息添加到el.directives中
+        // 这个函数在complier的helpers中，很简单，就不多说了
+        addDirective(
+          el,
+          name,
+          rawName,
+          value,
+          arg,
+          isDynamic,
+          modifiers,
+          list[i]
+        );
+        // 如果v-mode 的值绑定的是 v-for 迭代出来的 item，抛出错误 
+        if (process.env.NODE_ENV !== "production" && name === "model") {
+          checkForAliasModel(el, value);
+        }
+      }
+    } else {
+      // 抛出错误，指令中是不需要使用插值符号的
+      if (process.env.NODE_ENV !== "production") {
+        const res = parseText(value, delimiters);
+        if (res) {
+          warn(
+            `${name}="${value}": ` +
+              "Interpolation inside attributes has been removed. " +
+              "Use v-bind or the colon shorthand instead. For example, " +
+              'instead of <div id="{{ val }}">, use <div :id="val">.',
+            list[i]
+          );
+        }
+      }
+      // 将属性添加到 el.attrs 或者是 el.dynamicAttrs 数组中
+      addAttr(el, name, JSON.stringify(value), list[i]);
+      // #6887 firefox doesn't update muted state if set via attribute
+      // even immediately after element creation
+      if (
+        !el.component &&
+        name === "muted" &&
+        platformMustUseProp(el.tag, el.attrsMap.type, name)
+      ) {
+        addProp(el, name, "true", list[i]);
+      }
+    }
+  }
+}
+```
+上文中我们知道了 processElement 函数对标签上的指令、属性和修饰符进行了处理，返回出了我们处理过的一个 ast 对象
+## v-if 的规则
+回到 closeElement 函数中来，在这里限定了只能有单个根标签的规则：
+```
+// 如果根标签处有多个标签
+if (!stack.length && element !== root) {
+ // 判断是否使用条件渲染（v-if 只剩下一个标签也符合规则）
+  if (root.if && (element.elseif || element.else)) {
+    if (process.env.NODE_ENV !== "production") {
+      // 这个函数在上文遇到过，确认 element是单个标签
+      // 而不是 template 和 slot 这种虚拟标签，或者 v-for 列表渲染
+      checkRootConstraints(element);
+    }
+    // 添加到 root.ifCondition 数组
+    addIfCondition(root, {
+      exp: element.elseif,
+      block: element,
+    });
+  } else if (process.env.NODE_ENV !== "production") {
+    warnOnce(
+      `Component template should contain exactly one root element. ` +
+        `If you are using v-if on multiple elements, ` +
+        `use v-else-if to chain them instead.`,
+      { start: element.start }
+    );
+  }
+}
+```
+在这里与上面恰恰相反，是存在着根标签的情况：
+```
+if (currentParent && !element.forbidden) {
+  if (element.elseif || element.else) {
+    processIfConditions(element, currentParent);
+  } else {
+    // 若元素有作用域插槽
+    if (element.slotScope) {
+      // scoped slot
+      // keep it in the children list so that v-else(-if) conditions can
+      // find it as the prev node.
+      // 获取插槽名
+      const name = element.slotTarget || '"default"';
+      // 保存到父元素的 scopedSlots 中
+      (currentParent.scopedSlots || (currentParent.scopedSlots = {}))[
+        name
+      ] = element;
+    }
+    // 将属性不是 elseif 和 else 的 ast 筛选掉
+    currentParent.children.push(element);
+    // 替换 parent，使用干净的 currentParent
+    element.parent = currentParent;
+  }
+}
+```
+// 解析 else-if 和 else，添加到 if 的 ifConditions 属性
+```
+function processIfConditions(el, parent) {
+  // 从后往前遍历同级节点，直到遍历到第一个真实节点
+  // 因为在上文中children是一个个push到 currentParent.child 中的
+  // 所以最近的一个元素一定是末尾的一个
+  const prev = findPrevElement(parent.children);
+  // 而这个末尾的元素，必须是有 if 属性的，
+  // 因为在 v-else 和 v-else-if 前必须要有 v-if
+  if (prev && prev.if) {
+  // 在上文中过滤掉了的 elseif 和 else
+  // 会被添加到与之关联 v-if 元素的 addIfCondition 属性中 
+    addIfCondition(prev, {
+      exp: el.elseif,
+      block: el,
+    });
+  } else if (process.env.NODE_ENV !== "production") {
+   // 如果它们之前没有 v-if 抛出错误
+    warn(
+      `v-${el.elseif ? 'else-if="' + el.elseif + '"' : "else"} ` +
+        `used on element <${el.tag}> without corresponding v-if.`,
+      el.rawAttrsMap[el.elseif ? "v-else-if" : "v-else"]
+    );
+  }
+}
+```
+```
+// 紧接着清除当前子元素中有作用域插槽的元素
+element.children = element.children.filter((c) => !(c: any).slotScope);
+// 清除多余的空格
+trimEndingWhitespace()
+// 关闭组件的 v-pre 状态，后面用不到了。清除
+if (element.pre) {
+  inVPre = false;
+}
+// 关闭 <pre></pre> 标签的状态
+if (platformIsPreTag(element.tag)) {
+  inPre = false;
+}
+```
+## 总结
+"引出后面的vnode"          
+  

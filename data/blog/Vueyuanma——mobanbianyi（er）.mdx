@@ -1,0 +1,50 @@
+---
+  title: Vue源码——模版编译（二）
+  date: 2023-12-23T13:32:13Z
+  summary:
+  tags: []
+---
+  
+  ## 前言 
+在 vue 中
+/.
+.流程图
+./
+
+## 模板的挂载
+有经验的同学，肯定都对 `$mount` 方法很眼熟，此方法能够将 template/el 挂载到 DOM 元素上；在前文所介绍的 `Vue 初始化中` 同样也调用过这个方法：
+```
+if (vm.$options.el) {
+      vm.$mount(vm.$options.el);
+}
+```
+那么它是如何做到的呢？ 
+<a href="http://localhost:3000/detail/1080" target="_black">Vue 的挂载方法 $mount</a>
+
+## 模板的编译
+### 模板编译函数
+在`$mount`中获取到`template`后，我们调用了<a href="http://localhost:3000/detail/1081" target="_black">compileToFunctions</a>函数，将其处理成了`rander表达式`和 （阿巴巴巴）。
+这个函数的核心其实还是我们在外部传入的`basecompile`:
+```
+createCompilerCreator(function baseCompile(
+  template: string,
+  options: CompilerOptions
+): CompiledResult {
+  const ast = parse(template.trim(), options);  
+  if (options.optimize !== false) {
+    optimize(ast, options);
+  }
+  const code = generate(ast, options);
+  return {
+    ast,
+    render: code.render,
+    staticRenderFns: code.staticRenderFns,
+  };
+});
+```
+在其中通过了多个高阶函数进行处理包装才得到了<a href="http://localhost:3000/detail/1081" target="_black">compileToFunctions</a>。
+
+### baseCompile函数
+`baseCompile`中有着简短的核心代码，首先调用了<a href="http://localhost:3000/detail/1082" target="_black">parse</a>函数，在其中利用了正则对模板以及其中的 style、class、directives进行了解析，形成ast树
+
+  

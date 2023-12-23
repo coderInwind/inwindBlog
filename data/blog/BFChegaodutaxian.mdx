@@ -8,30 +8,29 @@
   ## 高度塌陷
 我们知道，如果一个块级元素没有设置固定的高度，那么它的高度会被高度最大的子元素撑起，如下：
 在容器中有 box1 和 box2 两个元素，容器的高度被 box1 撑起
-```
+
 <div style="background-color: aqua;display:flex">
   <div style="height:100px;width:100px;background-color: red;line-height:100px;text-align:center;color:white">box1</div>
 <div style="height:50px;width:150px;background-color: blue;line-height:50px;text-align:center;color:white">box2</div>
 </div>
-```
+
 如果给 box1 添加浮动、定位等，使其脱离了正常的文档流，即产生了高度塌陷
-```
+
 <div style="background-color: aqua;">
   <div style="height:100px;width:100px;background-color: red;line-height:100px;text-align:center;color:white;float: left;">box1</div>
 <div style="height:50px;width:150px;background-color: blue;line-height:50px;text-align:center;color:white">box2</div>
 </div><br>
-```
+
 ## 外边距塌陷
 外边距塌陷也称为外边距合并，是指两个在正常流中相邻（兄弟或父子关系）的块级元素的外边距，组合在一起变成单个外边距，不过只有上下外边距才会有塌陷，左右外边距不会出现这种问题。
 ### 兄弟元素
-```
 <div style="margin-bottom: 5px; background-color: rgb(255, 147, 147)">
   一寸光阴一寸金
 </div>
 <div style="margin-top: 30px; background-color: rgb(159, 159, 255)">
   寸金难买寸光阴
 </div>
-```
+
 ```
 <div style="margin-bottom: 5px; background-color: rgb(255, 147, 147)">
   一寸光阴一寸金
@@ -42,13 +41,11 @@
 ```
 可以看到在有相邻 `margin-bottom` 和 `margin-top` 时，他们只会保留边距大的一个，而不是将其累加
 ### 父子元素
-```
 <div style="background-color: rgb(224,224,224);height:300px;display:flow-root">
   <div style="background-color: rgb(122,122,222);width:200px;height:200px;">
     <div style="background-color: rgb(122,22,122);width:100px;height:100px;margin-top: 20px;"></div>
   </div>
 </div>
-```
 这种现象我们应该经常会遇到，无论是给父元素还是子元素边距，他们都会有边距。
 以上情形都可以通过 BFC 解决，那么什么是 BFC ？
 
