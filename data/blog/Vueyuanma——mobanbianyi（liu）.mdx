@@ -1,0 +1,185 @@
+---
+  title: Vue源码——模版编译（六）
+  date: 2023-12-23T12:38:42Z
+  summary:
+  tags: []
+---
+  
+  ## 前言
+在上篇文章中我们完成了模板到 ast 抽象树的编译，得到了想要的对象后，我们就可以直接生成`render`函数了，但 Vue 对性能要求是比较高的，所以在两个阶段中间还有一个进行了一个优化的过程。
+怎么实现的这个优化呢？
+就是本篇文章要讲的——标记静态的节点，得到`render`之后，通过其渲染得到与编译前对应的`VNode`，之后通过`patch`函数进行修补，后完成渲染。我们知道`vnode`对比真实dom的区别是发生改变时不会发生整个节点的变化，而是对比旧节点和新节点进行部分的`patch`修改。
+但是在这个过程之前，需要提前知道的是有需要用这个`patch`函数的只有部分的<u>非静态标签</u>，不会变化的<u>静态标签</u>是不需要进行`patch`的，在这里的主流程就是对节点是否为静态打上标记：
+```
+@ src/compiler/index
+export const createCompiler = createCompilerCreator(function baseCompile(
+  template: string,
+  options: CompilerOptions
+): CompiledResult {
+  const ast = parse(template.trim(), options);
+  // 进入优化阶段
+  if (options.optimize !== false) {
+    optimize(ast, options);
+  }
+
+  const code = generate(ast, options);
+  return {
+    ast,
+    render: code.render,
+    staticRenderFns: code.staticRenderFns,
+  };
+});
+```
+
+在开头声明了一个函数，又是熟悉的的缓存函数 `cached`，`makeMap` 函数前文也有提到 <a href="https://blog.liuji.site/detail/1070" target="_blank">Vue 源码中的工具函数</a>，此处的作用是返回一个用于判断当前 `map` 是否包含传入的参数 `key`，这些 `key` 是所有静态节点必须有的 `key`： 
+```
+const genStaticKeysCached = cached(genStaticKeys)
+
+function genStaticKeys (keys: string): Function {
+  return makeMap(
+    'type,tag,attrsList,attrsMap,plain,parent,children,attrs,start,end,rawAttrsMap' +
+    (keys ? ',' + keys : '')
+  )
+}
+```
+我们继续来看这个优化函数，传入的参数是模板编译器生成的ast对象和模板的配置对象：
+```
+export function optimize (root: ?ASTElement, options: CompilerOptions) {
+  // 确认是否为根元素
+  if (!root) return
+  isStaticKey = genStaticKeysCached(options.staticKeys || '')
+  // 是否为svg
+  isPlatformReservedTag = options.isReservedTag || no
+  // 首先标记所有的非静态节点
+  markStatic(root)
+  // 标记静态根节点
+  markStaticRoots(root, false)
+}
+```
+## 标记静态节点
+
+Vue 通过递归判断属性来标记静态节点，回顾一下之前的编译，在ast对象中存在着一个中有一个 type，这个 type 记录着当前节点的类型，对应关系如下：
+| type取值 | 含义 |
+| - | - |
+| 1 | 普通的元素节点 |
+| 2 | 包含插值语法的动态节点 |
+| 3 | 纯文本节点 |
+```
+function markStatic (node: ASTNode) {
+  // 判断是否为静态节点
+  node.static = isStatic(node)
+  if (node.type === 1) {
+    // 排除组件——组件不会被认为是一个静态的节点
+    if (
+      !isPlatformReservedTag(node.tag) &&
+      node.tag !== 'slot' &&
+      node.attrsMap['inline-template'] == null
+    ) {
+      return
+    }
+    for (let i = 0, l = node.children.length; i < l; i++) {
+      const child = node.children[i]
+      markStatic(child)
+      if (!child.static) {
+        node.static = false
+      }
+    }
+    if (node.ifConditions) {
+      for (let i = 1, l = node.ifConditions.length; i < l; i++) {
+        const block = node.ifConditions[i].block
+        markStatic(block)
+        if (!block.static) {
+          node.static = false
+        }
+      }
+    }
+  }
+}
+```
+从上文可以看到，首先通过 `isStatic` 函数判断是否为静态节点，如果是返回 `true`，反之则返回 `false`，函数实现如下：
+```
+function  isStatic (node: ASTNode): boolean {
+  // 先通过 type 判断
+  if (node.type === 2) { // expression
+    return false
+  }
+  if (node.type === 3) { // text
+    return true
+  }
+  // 如果为 type 为 1，则进一步通过判断其属性来确认
+  return !!(node.pre || (
+    !node.hasBindings && // no dynamic bindings
+    !node.if && !node.for && // not v-if or v-for or v-else
+    !isBuiltInTag(node.tag) && // not a built-in
+    isPlatformReservedTag(node.tag) && // not a component
+    !isDirectChildOfTemplateFor(node) &&
+    Object.keys(node).every(isStaticKey)
+  ))
+}
+```
+如果元素为一个普通的元素节点（type为1），那么要确认他是一个静态节点必须要满足下面的条件：
++ 元素节点使用了`v-pre`指令
++ 如果没有使用该属性，那么元素必须同时满足以下条件：
+    - 不能是动态绑定的元素或者插槽，即标签上不能存在 `v-`、`@`、`:`、`#`
+    - 不能是使用 `v-if`，`v-for`，`v-else`指令的元素
+    - 不能是内置的组件，即标签名为 `slot` 或 `component`
+    - 不能是带有 `v-for` 的 `template` 标签
+    - 必须有静态节点的 key：`type`，`tag`，`attrsList`，`attrsMap`，`plain`，`parent`，`children`，`attrs`，`start`，`end`，`rawAttrsMap`
+遍历递归子节点进行标记，值得注意的是这里有一个`if`判断，首先我们知道的是这儿的递归是从上往下进行遍历的，那么如果父节点被判断为一个静态节点，那么它的内部应该也是静态的，而如果它的字节点是个动态节点，就自相矛盾了，为了避免这种情况，在一个子元素为动态节点的时候，他的父元素也会被重置为一个动态的节点：
+```
+for (let i = 0, l = node.children.length; i < l; i++) {
+  const child = node.children[i]
+  markStatic(child)
+  if (!child.static) {
+    node.static = false
+  }
+}
+```
+同样的，判断`if`条件里的节点，跟上面差不多，这里就不多赘述：
+```
+if (node.ifConditions) {
+  for (let i = 1, l = node.ifConditions.length; i < l; i++) {
+    const block = node.ifConditions[i].block
+    markStatic(block)
+    if (!block.static) {
+      node.static = false
+    }
+  }
+}
+```
+## 标记静态根节点
+判断一个节点是否为一个静态的根节点，所谓静态的根节点，即其后代中所有的节点都是静态节点：
+```
+function markStaticRoots (node: ASTNode, isInFor: boolean) {
+  if (node.type === 1) {
+    if (node.static || node.once) {
+      node.staticInFor = isInFor
+    }
+    // For a node to qualify as a static root, it should have children that
+    // are not just static text. Otherwise the cost of hoisting out will
+    // outweigh the benefits and it's better off to just always render it fresh.
+    if (node.static && node.children.length && !(
+      node.children.length === 1 &&
+      node.children[0].type === 3
+    )) {
+      node.staticRoot = true
+      return
+    } else {
+      node.staticRoot = false
+    }
+    if (node.children) {
+      for (let i = 0, l = node.children.length; i < l; i++) {
+        markStaticRoots(node.children[i], isInFor || !!node.for)
+      }
+    }
+    if (node.ifConditions) {
+      for (let i = 1, l = node.ifConditions.length; i < l; i++) {
+        markStaticRoots(node.ifConditions[i].block, isInFor)
+      }
+    }
+  }
+}
+```
+待续...
+
+  

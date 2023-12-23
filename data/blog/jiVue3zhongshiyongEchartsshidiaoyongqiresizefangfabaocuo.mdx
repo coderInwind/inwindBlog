@@ -1,0 +1,69 @@
+---
+  title: 记Vue3中使用Echarts时调用其resize方法报错
+  date: 2023-12-23T12:38:15Z
+  summary:
+  tags: []
+---
+  
+  ## 前言
+一个风和日丽的晚上在满心欢喜的写完接口，把数据用 echarts 渲到后台项目上，准备关闭浏览器的我好像觉得差了点什么，噢噢原来是 echarts 自适应没做。给 window 加个 resize 监听，在里面调用 echarts 实例的 resize 方法不就行了？我当时是这么想的...
+
+## 问题
+在我自信满满的操作完之后，控制台出我意料地报了错：
+![](http://cdn.liuji.site/illustration/1084/2022-12-13_22-27-06.jpg)
+`Uncaught TypeError: Cannot read properties of undefined (reading 'type')`
+```
+import { resizeMixin } from "./mixin"
+
+const charts = ref()
+let chartsInstance = ref<echarts.ECharts>()
+resizeMixin(chartsInstance)
+
+const initCharts = (records: Record[]) => {
+  （
+    ... 网络请求...
+    records.value = 请求返回值
+    ）
+  
+  chartsInstance.value = echarts.init(charts.value)
+
+  chartsInstance.value.setOption({......})
+}
+
+const records = ref<Record[]>()
+watch(records, (value) => {
+  value && initCharts(value)
+})
+```
+作者觉得表格自适应这块重复逻辑很多，所以对这块做了抽离
+```
+@ mixin.ts
+import { onMounted, ShallowRef, onUnmounted,Ref } from "vue"
+import { ECharts } from "echarts"
+
+export function resizeMixin(chartInstance: Ref<ECharts | undefined>) {
+  const $_resizeHandler = () => {
+    chartInstance.value?.resize()
+  }
+
+  onMounted(() => {
+    window.addEventListener("resize", $_resizeHandler)
+  })
+
+  onUnmounted(() => {
+    window.removeEventListener("resize", $_resizeHandler)
+  })
+}
+```
+后面我前前后后为了这个问题忙碌了一个小时（修修改改，百度谷歌），后面还是在 github 找到了答案：<a href="https://github.com/apache/echarts/issues/14781">传送门</a>
+![](http://cdn.liuji.site/illustration/1084/2022-12-13_23-08-22.jpg)
+一位 echarts 的大佬给出这样的答案，大概意思是因为 Vue3 使用 proxy 代理的原因，echarts 图表获取不到想要的 `options` 值，建议使用 `shallowRef` 而不是 `ref`
+
+## shallowRef 和 Ref 区别
+Ref 可以给数据添加响应式这个众所周知，获取数据时要多在其后面添加一个 `.value`
+
+shallowRef 和 `ref()` 不同，浅层 ref 的内部值将会原样存储和暴露，并且不会被深层递归地转为响应式。只有对 `.value` 的访问是响应式的。
+使用 `shallowRef` 的目的是用于对大型数据结构的性能优化或是与外部的状态管理系统集成。
+
+
+  

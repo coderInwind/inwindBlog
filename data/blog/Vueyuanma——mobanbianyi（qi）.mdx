@@ -1,0 +1,223 @@
+---
+  title: Vue源码——模版编译（七）
+  date: 2023-12-23T12:39:10Z
+  summary:
+  tags: []
+---
+  
+  ## 前言
+在前文中，我们了解到了模板解析器的创建过程，在模板编译模块入口处，我们创建了模板编译函数
+```
+const { compile, compileToFunctions } = createCompiler(baseOptions);
+```
+调用 createCompiler 函数时我们传入了一个对象 baseOptions，里面有着模板编译所需要用到的属性，那么这个对象里有哪些属性，它们都起哪些作用呢，我们来一一展开分析：
+## baseOptions 分析
+```
+// @/platforms/web/compiler/modules/index.js
+
+export const baseOptions: CompilerOptions = {
+  expectHTML: true,
+  modules,
+  directives,
+  isPreTag,
+  isUnaryTag,
+  mustUseProp,
+  canBeLeftOpenTag,
+  isReservedTag,
+  getTagNamespace,
+  staticKeys: genStaticKeys(modules)
+}
+```
+### expectHTML
+对 HTML 标签规则的适配，我们知道 p 标签中只允许存在行内元素，如果写 div 这种块级元素，那么 html 会直接将此元素放到到p标签后，我就不上代码了，
+
+### modules
+一个数组，包含着三个对象元素
+
+#### class
+class 保存着三个属性 staticKeys、transformNode、genData，transformNode 在`start`钩子中解析标签中的 class
+transformNode 获取 class 的值并添加到 ast 对象中；genData 用于将 class 加工成 render 函数认识的字符串：
+```
+function transformNode (el: ASTElement, options: CompilerOptions) {
+  const warn = options.warn || baseWarn
+  // 获取并移除 class 属性
+  const staticClass = getAndRemoveAttr(el, 'class')
+  if (process.env.NODE_ENV !== 'production' && staticClass) {
+    const res = parseText(staticClass, options.delimiters)
+    // 如果有返回值表示用户在其中使用了插值语法，抛出错误
+    if (res) {
+      warn(
+        `class="${staticClass}": ` +
+        'Interpolation inside attributes has been removed. ' +
+        'Use v-bind or the colon shorthand instead. For example, ' +
+        'instead of <div class="{{ val }}">, use <div :class="val">.',
+        el.rawAttrsMap['class']
+      )
+    }
+  }
+  // 如果是静态的 class，转为json格式赋值
+  if (staticClass) {
+    el.staticClass = JSON.stringify(staticClass)
+  }
+   // 如果是动态绑定的class
+  const classBinding = getBindingAttr(el, 'class', false /* getStatic */)
+  if (classBinding) {
+    el.classBinding = classBinding
+  }
+}
+
+```
+genData 将获取到 class 值进行加工，返回成一个字符串，供 render 函数渲染使用，
+```
+function genData (el: ASTElement): string {
+  let data = ''
+  // 静态的class
+  if (el.staticClass) {
+    data += `staticClass:${el.staticClass},`
+  }
+  // 动态绑定的class
+  if (el.classBinding) {
+    data += `class:${el.classBinding},`
+  }
+  return data
+}
+
+export default {
+  staticKeys: ['staticClass'],
+  transformNode,
+  genData
+}
+```
+#### style
+略...(只能说跟上面的 class 一毛一样，没什么好说的 ヽ(ー_ー)ノ)
+
+#### model
+对于使用 `v-model` 的 input，如果同时使用了 `v-bind` 绑定 type，那么在动态切换 type 的过程中，但是值得注意的是，只有 `type` 为 <u>checkbox</u> 或 <u>radio</u> 时，双向绑定的值只有 true 或者是 false，在渲染的过程中也是和其他的 `type` 不一样的，所以 vue 在此处进行了处理，如果 `type` 为那两个值，vue 会利用传入的 ast 克隆出一个新的ast对象返回
+```
+// 克隆 ast 对象
+function cloneASTElement (el) {
+  调用 createASTElement 创建一个新的 ast 对象
+  return createASTElement(el.tag, el.attrsList.slice(), el.parent)
+}
+
+
+function preTransformNode(el: ASTElement, options: CompilerOptions) {
+  if (el.tag === "input") {
+    // 判断 input 标签上是否有 v-model 属性
+    const map = el.attrsMap;
+    if (!map["v-model"]) {
+      return;
+    }
+
+    let typeBinding;
+    // 如果其有动态的type属性，获取绑定的值
+    if (map[":type"] || map["v-bind:type"]) {
+      typeBinding = getBindingAttr(el, "type");
+    }
+
+    // v-bind="{type:'radio'}" 这种写法也兼容，不知道有什么用处
+    if (!map.type && !typeBinding && map["v-bind"]) {
+      typeBinding = `(${map["v-bind"]}).type`;
+    }
+
+    // 存在属性值
+    if (typeBinding) {
+      // 获取属性值，并从attrMap中移除
+      // 指令v-if 值
+      const ifCondition = getAndRemoveAttr(el, "v-if", true);
+      const ifConditionExtra = ifCondition ? `&&(${ifCondition})` : ``;
+      // 是否有指令v-else
+      const hasElse = getAndRemoveAttr(el, "v-else", true) != null;
+      // 指令v-else-if 值
+      const elseIfCondition = getAndRemoveAttr(el, "v-else-if", true);
+      // 1. v-if -> checkbox
+      const branch0 = cloneASTElement(el);
+      //解析 v-for 如若没有则内部会return
+      processFor(branch0);
+      // 在 branch0 的 attrsList中添加 {name: 'type', value: 'checkbox'}
+      // 同时的 attrsMap 中添加 type: "checkbox" 键值对
+      addRawAttr(branch0, "type", "checkbox");
+      // 加工标签
+      processElement(branch0, options);
+      // 防止二次地加工
+      branch0.processed = true;
+      // 保存添加 if 条件，
+      // 作用相当于在标签上使用 v-if = "typeBinding === 'checkbox'` + ifConditionExtra"
+      
+      branch0.if = `(${typeBinding})==='checkbox'` + ifConditionExtra;
+      addIfCondition(branch0, {
+        exp: branch0.if,
+        block: branch0,
+      });
+      // 2. v-else-if  radio
+      // 同样的，但因为不是v-if元素，
+      // 所以他不会存在根 ast 元素的子孙中
+      // 而是对应 v-if 元素的IfCondition属性中
+      const branch1 = cloneASTElement(el);
+      getAndRemoveAttr(branch1, "v-for", true);
+      addRawAttr(branch1, "type", "radio");
+      processElement(branch1, options);
+      addIfCondition(branch0, {
+        exp: `(${typeBinding})==='radio'` + ifConditionExtra,
+        block: branch1,
+      });
+      // 3. other 原本存在于标签上的 v-if 条件
+      const branch2 = cloneASTElement(el);
+      getAndRemoveAttr(branch2, "v-for", true);
+      addRawAttr(branch2, ":type", typeBinding);
+      processElement(branch2, options);
+      addIfCondition(branch0, {
+        exp: ifCondition,
+        block: branch2,
+      });
+
+      // 如果元素上有 v-else
+      if (hasElse) {
+        branch0.else = true;
+      // 那么后面的条件会顺着那个条件用 else-if 判断
+      } else if (elseIfCondition) {
+        branch0.elseif = elseIfCondition;
+      }
+
+      return branch0;
+    }
+  }
+}
+
+export default {
+  preTransformNode
+}
+```
+
+### directives
+待分析
+#### isPreTag
+简单的一个函数，接收一个字符串返回布尔值，这里用来判断传入的标签名字是不是 pre。
+```
+export const isPreTag = (tag: ?string): boolean => tag === 'pre'
+```
+#### isUnaryTag
+判断是否为自闭合标签，<a href="https://blog.liuji.site/detail/1070" target="_blank">makeMap</a> 的作用这里就不多赘述了。
+```
+export const isUnaryTag = makeMap(
+  'area,base,br,col,embed,frame,hr,img,input,isindex,keygen,' +
+  'link,meta,param,source,track,wbr'
+)
+```
+### mustUseProp
+这个函数被用在编译器 parse 中，在解析完属性修饰符后，vue 需要把前面得到的结果都添加到当前元素的 ast 对象上，此项为判断条件，如果当前标签不是一个动态组件标签`component`并且当前函数返回 true，那么就添加到 `el.props` 中，否则添加到`el.attrs`中：
+```
+const acceptValue = makeMap('input,textarea,option,select,progress')
+// 传入的三个参数分别是当前标签的：标签名，type，绑定属性名
+// 符合情况就返回true
+export const mustUseProp = (tag: string, type: ?string, attr: string): boolean => {
+  return (
+    (attr === 'value' && acceptValue(tag)) && type !== 'button' ||
+    (attr === 'selected' && tag === 'option') ||
+    (attr === 'checked' && tag === 'input') ||
+    (attr === 'muted' && tag === 'video')
+  )
+}
+
+```
+  
