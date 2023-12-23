@@ -1,0 +1,113 @@
+---
+  title: Vue源码——模版编译（八）
+  date: 2023-12-23T12:39:51Z
+  summary:
+  tags: []
+---
+  
+  ## 前言
+在前篇文章我们了解到了在 vue 模板编译流程中解析到文本时调用 `chars` 钩子，在里面处理相关的内容；我们知道，Vue 可以使用插值符号在文本中随意的穿插变量，那么它是怎么解析插值语法的呢？这就用到了我们的 parseText 函数。
+```
+if (!inVPre && text !== " " && (res = parseText(text, delimiters))) {
+  child = {
+    type: 2,
+    expression: res.expression,
+    tokens: res.tokens,
+    text,
+  };
+} else if (
+  text !== " " ||
+  !children.length ||
+  children[children.length - 1].text !== " "
+) {
+  child = {
+    type: 3,
+    text,
+  };
+}
+```
+## 正文
+
+### 自定义插值符号
+在编译器 options 中有属性 delimiters 允许用户传入自定义的插值符号（默认的插值符号是{{ }}），此处 buildRegex 函数根据用户传入插值符号生成用于匹配的正则表达式
+```
+const buildRegex = cached(delimiters => {
+  // 前面添加反斜杠在正则中用作转义
+  const open = delimiters[0].replace(regexEscapeRE, '\\$&')
+  const close = delimiters[1].replace(regexEscapeRE, '\\$&')
+  // 生成正则表达式
+  return new RegExp(open + '((?:.|\\n)+?)' + close, 'g')
+})
+```
+
+函数接收两个参数，1、文本字符串；2、用户自定义的插值符号
+```
+// 默认情况下匹配文本中插值符号的正则
+const defaultTagRE = /\{\{((?:.|\r?\n)+?)\}\}/g
+// 匹配 delimiters 正则
+const regexEscapeRE = /[-.*+?^${}()|[\]\/\\]/g
+// flow 类型
+type TextParseResult = {
+  expression: string,
+  tokens: Array<string | { '@binding': string }>
+}
+
+export function parseText (
+  text: string,
+  delimiters?: [string, string]
+): TextParseResult | void {
+  // 匹配插值符号的正则
+  const tagRE = delimiters ? buildRegex(delimiters) : defaultTagRE
+  
+  if (!tagRE.test(text)) {
+    return
+  }
+
+  const tokens = []
+  const rawTokens = []
+  // 下一次开始匹配的位置
+  let lastIndex = tagRE.lastIndex = 0
+
+  let match, index, tokenValue
+  // 以首个插值匹配结果为条件
+  while ((match = tagRE.exec(text))) {
+    // 开头的位置
+    index = match.index
+    if (index > lastIndex) {
+      // 插值符号前的文本
+      rawTokens.push(tokenValue = text.slice(lastIndex, index))
+      // 插值符号前的文本（json）
+      tokens.push(JSON.stringify(tokenValue))
+    }
+    // 过滤非法符号
+    const exp = parseFilters(match[1].trim())
+    // 加工后的变量名
+    tokens.push(`_s(${exp})`)
+    // 加工后的变量名
+    rawTokens.push({ '@binding': exp })
+
+    lastIndex = index + match[0].length
+  }
+  if (lastIndex < text.length) {
+    rawTokens.push(tokenValue = text.slice(lastIndex))
+    tokens.push(JSON.stringify(tokenValue))
+  }
+  return {
+    // 以 +号连接成字符串
+    expression: tokens.join('+'),
+    tokens: rawTokens
+  }
+}
+```
+模板文本为：`<div>姓名：[name]；年龄：[age]</div>`
+解析后的返回值形如：
+```
+{
+  expression: "\"姓名：\"+_s(name)+\"；年龄：\"+_s(age)"，
+  tokens：["姓名"，{@binding: "name"}，"；年龄：",{@binding: "age"}]
+}
+```
+## 总结
+本篇文章介绍了 parseText 的作用，这里对我们 Vue 的插值语法文本进行加工，为后续 render 函数渲染 dom 做准备
+
+  
