@@ -29,7 +29,7 @@ if (!inVPre && text !== " " && (res = parseText(text, delimiters))) {
 ## 正文
 
 ### 自定义插值符号
-在编译器 options 中有属性 delimiters 允许用户传入自定义的插值符号（默认的插值符号是{{ }}），此处 buildRegex 函数根据用户传入插值符号生成用于匹配的正则表达式
+在编译器 options 中有属性 delimiters 允许用户传入自定义的插值符号（默认的插值符号是`{{ }}`），此处 buildRegex 函数根据用户传入插值符号生成用于匹配的正则表达式
 ```
 const buildRegex = cached(delimiters => {
   // 前面添加反斜杠在正则中用作转义
