@@ -8,10 +8,10 @@
   <div type='discussions-op-text'>
 
 <sup>Originally posted by **coderInwind** October  5, 2023</sup>
-### 前言
+## 前言
 项目一直针对是`H5`&`微信公众号`平台开发，可是突然下来了个需求说要在小程序平台上线，我真的栓Q。技术栈使用的是Vue3，因为当时并没有计划做跨平台，所以没有选择uni-app、tora之类的跨平台框架，那么目前最便捷的方案就是小程序内嵌H5了，也就是使用小程序的`webView`。
 
-### 什么是webView?
+## 什么是webView?
 我把他理解成微信小程序平台中类似`iframe`标签的组件。他们都有相同的功能，那就是他们都可以通过网页地址将其嵌入到当前网页/小程序。
 
 但不同的是：
@@ -20,7 +20,7 @@
 ps. `webView`限制只对企业类型小程序开放，个人小程序无法使用。
 
 
-### webView的应用
+## webView的应用
 这个使用起来相当的简单，你只需要新建一个小程序，在后台完成相关的配置，然后使用webView链上网页地址：
 ```
 <view class="container">

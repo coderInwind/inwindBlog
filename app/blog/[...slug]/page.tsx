@@ -108,8 +108,8 @@ export default async function Page({ params }: { params: { slug: string[] } }) {
 
   // 查找标题
 
-  const titles = Array.from(JSON.stringify(post.body.raw).matchAll(/###.+?\\n/g)).map(item=>{
-    let temp = item[0].replace("### ","").replace("\\n","")
+  const titles = Array.from(JSON.stringify(post.body.raw).matchAll(/##.+?\\n/g)).map(item=>{
+    let temp = item[0].replace("## ","").replace("\\n","")
     return temp
   })
   
