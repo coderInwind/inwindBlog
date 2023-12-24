@@ -5,10 +5,10 @@
   tags: ["JavaScript"]
 ---
   
-  ### 前言
+  ## 前言
 最近一直在对接媒体相关的需求，流媒体播放、语音输入之类的，踩了很多坑，总结下来是自己对于二进制数据的处理并不是很熟悉，今天抽空整理了一下相关二进制处理对象的使用和他们互相之间的转化。
 
-### Blob
+## Blob
 [blob](https://developer.mozilla.org/zh-CN/docs/Web/API/Blob/Blob)全称是 _Binary Large Object_ 表示一个不可变，原始类型的类文件对象，它可以是图片、音频、视频等，它的数据可以按照文本或二进制的格式进行读取。
 
 blob()包含两个参数
@@ -26,19 +26,19 @@ const blob = new Blob([array],"text/html")
 当然也可以是其他的[MIME类型](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types)：
 
 
-### Flie
+## Flie
 `File`继承了`Blob`的所有属性，可以看成一个特殊的`Blob`，且可以用在任意的 Blob 类型的 context 中。比如说， [FileReader](https://developer.mozilla.org/zh-CN/docs/Web/API/FileReader), [URL.createObjectURL()](https://developer.mozilla.org/zh-CN/docs/Web/API/URL/createObjectURL_static), [createImageBitmap()](https://developer.mozilla.org/en-US/docs/Web/API/createImageBitmap), 及 [XMLHttpRequest.send()](https://developer.mozilla.org/zh-CN/docs/Web/API/XMLHttpRequest#send()) 都能处理 Blob 和 File。
 
 从常见的来看，我们通过`input`标签上传一个文件，得到的就是一个`File`
 
 
-### ArrayBuffer
+## ArrayBuffer
 `ArrayBuffer` 对象用来表示通用的、固定长度的原始二进制数据缓冲区。
 它是一个字节数组，通常在其他语言中称为“byte array”。你不能直接操作 ArrayBuffer 中的内容；而是要通过[类型化数组对象](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/TypedArray)或 [DataView](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView) 对象来操作，它们会将缓冲区中的数据表示为特定的格式，并通过这些格式来读写缓冲区的内容。
 
 [ArrayBuffer()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer/ArrayBuffer) 构造函数创建一个以字节为单位的给定长度的新 ArrayBuffer。你也可以从现有的数据（例如，从 [Base64](https://developer.mozilla.org/zh-CN/docs/Glossary/Base64) 字符串或者[从本地文件](https://developer.mozilla.org/zh-CN/docs/Web/API/FileReader/readAsArrayBuffer)）获取数组缓冲区。
 
-#### 使用DataView操作
+### 使用DataView操作
 ```
  // 新建一个buffer
   const buffer = new ArrayBuffer(16)
@@ -52,7 +52,7 @@ const blob = new Blob([array],"text/html")
 ![image](https://github.com/coderInwind/inwindBlog/assets/91716457/62838808-ed53-4f3d-97fd-154e8d89f210)
 这就是基本的使用，我们可以设置8-bit、16-bit、32-bit、64-bit的写入和读取，设置写入的偏移量，需要注意的是64-bit数据的类型得是大数（bigint）。
 
-#### 使用TypedArray操作
+### 使用TypedArray操作
 它会有数个类提供给我们操作数据：
 ```
 const buffer = new ArrayBuffer(16)
